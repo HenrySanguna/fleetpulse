@@ -1,0 +1,38 @@
+### Node / Nx ###
+node_modules/
+dist/
+.nx/cache/
+.nx/workspace-data/
+tmp/
+
+### Gradle ###
+.gradle/
+**/build/
+!src/**/build/
+gradle-app.setting
+
+### Java ###
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+hs_err_pid*
+
+### Angular ###
+.angular/
+
+### Env / secrets ###
+.env
+.env.*
+!.env.example
+
+### IDE ###
+.idea/
+.vscode/
+*.iml
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log
