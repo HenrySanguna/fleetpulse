@@ -16,7 +16,7 @@ gradle-app.setting
 ### Java ###
 *.class
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 hs_err_pid*
 
 ### Angular ###

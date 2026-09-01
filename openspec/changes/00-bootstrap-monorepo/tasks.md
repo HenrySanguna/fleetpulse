@@ -4,13 +4,13 @@
 - [x] 1.1 Crear workspace Nx
 - [x] 1.2 Generar `apps/console` (Angular 21, standalone, zoneless)
 - [x] 1.3 Instalar y configurar el plugin `@nx/gradle`
-- [x] 1.4 Verificar que `nx graph` muestra los módulos Gradle junto al proyecto Angular (parcial: `nx graph` corre limpio y el plugin `@nx/gradle` está registrado en `nx.json`; los módulos Gradle todavía no existen — verificación completa pendiente hasta la sección 2, cuando se cree `backend/settings.gradle.kts`)
+- [x] 1.4 Verificar que `nx graph` muestra los módulos Gradle junto al proyecto Angular (parcial, sin cambios respecto al cierre de la sección 1: el lado Gradle está probado directamente — `./gradlew.bat nxProjectGraph` genera `build/nx/*.json` por módulo con las aristas de dependencia reales, p. ej. `api -> domain`, `api -> geo-core` — pero `npx nx show projects`/`nx graph` todavía fallan en esta máquina porque `@nx/gradle` invoca `gradlew.bat` con `child_process.execFile(..., { shell: true })` sin comillas alrededor de una ruta con espacios (`C:\Henry\Mis proyectos\Fleetpulse`); reproducido de forma aislada con Node puro, ver informe de aplicación de la sección 2. No es un problema de configuración de este repo, es una limitación de `@nx/gradle` con rutas de workspace que contienen espacios en Windows)
 
 ## 2. Build Gradle
-- [ ] 2.1 `backend/settings.gradle.kts` con los módulos `api`, `processor`, `domain`, `geo-core`
-- [ ] 2.2 Spring Boot 4.1 y Java 21 en el build raíz; `dev.nx.gradle.project-graph` aplicado a `allprojects`
-- [ ] 2.3 `geo-core` sin dependencia de Spring ni de JPA (verificado por una comprobación del build)
-- [ ] 2.4 `api` y `processor` dependen de `domain` y `geo-core`, nunca entre sí
+- [x] 2.1 `backend/settings.gradle.kts` con los módulos `api`, `processor`, `domain`, `geo-core`
+- [x] 2.2 Spring Boot 4.1 y Java 21 en el build raíz; `dev.nx.gradle.project-graph` aplicado a `allprojects`
+- [x] 2.3 `geo-core` sin dependencia de Spring ni de JPA (verificado por una comprobación del build)
+- [x] 2.4 `api` y `processor` dependen de `domain` y `geo-core`, nunca entre sí
 
 ## 3. Datos
 - [ ] 3.1 `docker-compose.yml` con PostGIS y Mosquitto, ambos con healthcheck
