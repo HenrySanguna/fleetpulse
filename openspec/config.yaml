@@ -1,0 +1,85 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: Java 21 LTS + Spring Boot 4.1 (Gradle, Kotlin DSL, multi-module) backend; Angular 21 standalone/zoneless + PrimeNG + MapLibre GL JS frontend. Nx monorepo via @nx/gradle.
+  Architecture: apps/console (Angular); backend/{api,processor,domain,geo-core} (Gradle modules). geo-core is pure Java, no Spring/JPA. api and processor depend on domain+geo-core, never on each other. libs/api-client is generated from OpenAPI, never hand-edited.
+  Data: Neon Postgres + PostGIS + pg_partman, native declarative partitioning + BRIN indexes on positions. Mosquitto MQTT (QoS 0 telemetry / 1 commands / 2 alerts). Flyway migrations.
+  Testing: JUnit 5 + Testcontainers + AssertJ (backend), Vitest + Playwright (frontend). geo-core requires 100% branch coverage. Every MQTT consumer needs idempotency + out-of-order tests. Spatial/history queries need an execution-plan test (no seq scan).
+  Constraints: zero cost, OSI-licensed dependencies only. No TimescaleDB, Redis, Mapbox GL JS, Spring Boot 3.x, or managed services beyond Neon/Fly.io/Cloudflare/GitHub.
+  Status: greenfield -- only .gitignore and openspec/ committed so far. Change 00-bootstrap-monorepo scaffolds the code; changes 01-06 are already fully specified.
+
+rules:
+  proposal:
+    - Include a rollback plan for risky changes
+    - Any paid tier or non-OSI dependency must be called out explicitly and justified (project.md "Restriccion transversal")
+
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - geo-core requirements MUST state branch-coverage expectations explicitly
+    - MQTT consumer requirements MUST include idempotency and out-of-order scenarios
+
+  design:
+    - Include sequence diagrams for non-trivial flows (MQTT ingestion, geofence evaluation)
+    - Document architecture decisions with rationale
+    - State which modules are touched and confirm dependency direction: api/processor -> domain/geo-core, never api <-> processor, geo-core never depends on Spring/JPA
+
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Flag any telemetry write-path task explicitly for batch-write and dedup-constraint requirements
+
+  apply:
+    guidelines:
+      - Follow existing code patterns
+      - No null at public boundaries: use Optional or nullability annotations
+      - Telemetry writes are batched (JdbcTemplate.batchUpdate or equivalent), never one INSERT per message
+      - Spatial queries use PostGIS ST_* functions via native query; never load geometry into Java memory to compute containment
+      - Partition maintenance is invoked explicitly from a @Scheduled task calling partman.run_maintenance_proc(); never rely on pg_partman's background worker (Neon suspends compute on idle)
+    tdd: true
+    test_command: "npx nx affected -t test"
+
+  verify:
+    test_command: "npx nx affected -t test"
+    build_command: "npx nx affected -t build"
+    coverage_threshold: 0 # no repo-wide gate; geo-core enforces 100% branch coverage on its own via Jacoco
+    notes:
+      - "geo-core: 100% branch coverage (Jacoco), pure Java, no I/O -- non-negotiable"
+      - Every MQTT consumer needs an idempotency test and an out-of-order test
+      - Integration tests use Testcontainers with real PostGIS and Mosquitto, never mocks
+      - Every spatial/history query needs an execution-plan test proving no sequential scan on the positions table
+
+  archive:
+    - Warn before merging destructive deltas
+    - Merge delta specs into openspec/specs/{domain}/spec.md only after the change is verified
+
+testing:
+  strict_tdd: true
+  strict_tdd_source: "openspec/project.md section 'Testing -- no negociable' (100% branch coverage on geo-core, mandatory idempotency/out-of-order tests per MQTT consumer, Testcontainers-only integration tests, execution-plan tests for spatial/history queries)"
+  detected: "2026-09-01"
+  status: "No test runner exists yet -- greenfield repo, only .gitignore + openspec/ committed. Runner setup is in scope of change 00-bootstrap-monorepo."
+  planned_runners:
+    backend: "JUnit 5 + Testcontainers + AssertJ, run via the Gradle wrapper once scaffolded"
+    frontend: "Vitest (unit) + Playwright (E2E), run via Nx"
+  layers:
+    unit: true
+    integration: "Testcontainers-only (PostGIS + Mosquitto), no mocks for spatial/broker logic"
+    e2e: "Playwright"
+  coverage:
+    available: false
+    command: ""
+    geo_core_requirement: "100% branch coverage (Jacoco), non-negotiable"
+  quality_tools:
+    linter: "not yet configured (planned in change 00, e.g. ESLint for TypeScript)"
+    type_checker: "TypeScript strict mode (no any, no @ts-ignore) per project.md"
+    formatter: "not yet configured"
+  local_toolchain_verified:
+    java: "OpenJDK 21 LTS at C:\\Program Files\\Java\\jdk-21 (JAVA_HOME set); OpenJDK 25 LTS also installed"
+    build_tool: "Maven 3.9.6 present but unused -- project mandates Gradle; will rely on the Gradle wrapper once the workspace is scaffolded in change 00"
+    node: "24.18.1"
+    npm: "11.16.0"
+    nx: "not installed locally; npx nx resolves nx@23.1.2 on demand"
+    docker: "29.7.2 (for docker-compose PostGIS + Mosquitto per change 00)"
+    gh_cli: "authenticated as HenrySanguna"
+    git: "2.55.0"
