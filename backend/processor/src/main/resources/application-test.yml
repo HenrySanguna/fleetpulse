@@ -1,0 +1,3 @@
+# Intentionally no spring.datasource.* or fleetpulse.mqtt.broker-url defaults:
+# Testcontainers-backed tests inject them at runtime via @DynamicPropertySource
+# against real, ephemeral containers instead of a fixed hardcoded value here.
