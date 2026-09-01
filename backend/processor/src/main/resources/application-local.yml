@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fleetpulse
+    username: fleetpulse
+    password: fleetpulse
+
+fleetpulse:
+  mqtt:
+    broker-url: tcp://localhost:1883

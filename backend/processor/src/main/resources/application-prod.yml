@@ -1,0 +1,4 @@
+# No defaults here on purpose: spring.datasource.url/username/password and
+# fleetpulse.mqtt.broker-url must come from environment variables
+# (SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD,
+# FLEETPULSE_MQTT_BROKERURL). Startup fails fast if any of them is missing.
