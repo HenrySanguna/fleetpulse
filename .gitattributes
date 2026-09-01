@@ -1,0 +1,5 @@
+# libs/api-client is generated from the OpenAPI document published by backend/api
+# (openapi-generator, typescript-angular). Never hand-edit; regenerate with
+# `npm run generate:api-client` instead. See
+# openspec/changes/00-bootstrap-monorepo/design.md "Contrato Java -> TypeScript".
+libs/api-client/src/** linguist-generated=true
