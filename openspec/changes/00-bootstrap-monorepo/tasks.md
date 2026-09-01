@@ -1,10 +1,10 @@
 # Tasks: Bootstrap Monorepo
 
 ## 1. Workspace Nx
-- [ ] 1.1 Crear workspace Nx
-- [ ] 1.2 Generar `apps/console` (Angular 21, standalone, zoneless)
-- [ ] 1.3 Instalar y configurar el plugin `@nx/gradle`
-- [ ] 1.4 Verificar que `nx graph` muestra los módulos Gradle junto al proyecto Angular
+- [x] 1.1 Crear workspace Nx
+- [x] 1.2 Generar `apps/console` (Angular 21, standalone, zoneless)
+- [x] 1.3 Instalar y configurar el plugin `@nx/gradle`
+- [x] 1.4 Verificar que `nx graph` muestra los módulos Gradle junto al proyecto Angular (parcial: `nx graph` corre limpio y el plugin `@nx/gradle` está registrado en `nx.json`; los módulos Gradle todavía no existen — verificación completa pendiente hasta la sección 2, cuando se cree `backend/settings.gradle.kts`)
 
 ## 2. Build Gradle
 - [ ] 2.1 `backend/settings.gradle.kts` con los módulos `api`, `processor`, `domain`, `geo-core`

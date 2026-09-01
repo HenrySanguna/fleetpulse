@@ -1,6 +1,8 @@
 ### Node / Nx ###
 node_modules/
 dist/
+out-tsc/
+coverage/
 .nx/cache/
 .nx/workspace-data/
 tmp/
@@ -27,7 +29,8 @@ hs_err_pid*
 
 ### IDE ###
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.iml
 
 ### OS ###
@@ -36,7 +39,6 @@ Thumbs.db
 
 ### Logs ###
 *.log
-
 
 ### SDD tooling cache ###
 .atl/
