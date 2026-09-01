@@ -13,10 +13,10 @@
 - [x] 2.4 `api` y `processor` dependen de `domain` y `geo-core`, nunca entre sí
 
 ## 3. Datos
-- [ ] 3.1 `docker-compose.yml` con PostGIS y Mosquitto, ambos con healthcheck
-- [ ] 3.2 `mosquitto.conf` con listener MQTT y listener WebSocket
-- [ ] 3.3 Flyway configurado en `domain`; migración `V1__init.sql` con `CREATE EXTENSION postgis` y `pg_partman`
-- [ ] 3.4 Perfiles de Spring: `local`, `test`, `prod`; validación de configuración que impide arrancar sin variables obligatorias
+- [x] 3.1 `docker-compose.yml` con PostGIS y Mosquitto, ambos con healthcheck
+- [x] 3.2 `mosquitto.conf` con listener MQTT y listener WebSocket
+- [x] 3.3 Flyway configurado en `domain`; migración `V1__init.sql` con `CREATE EXTENSION postgis` y `pg_partman`
+- [x] 3.4 Perfiles de Spring: `local`, `test`, `prod`; validación de configuración que impide arrancar sin variables obligatorias
 
 ## 4. Contrato Java → TypeScript
 - [ ] 4.1 `springdoc-openapi` en `api`, exponiendo el documento OpenAPI
