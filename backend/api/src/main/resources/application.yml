@@ -1,3 +1,20 @@
 spring:
   application:
     name: fleetpulse-api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # No Spring Security yet (change 02-add-fleet-auth); showing full details
+      # unauthenticated is a deliberate bootstrap-stage tradeoff, not a leak of
+      # secrets -- indicator details here never include datasource credentials.
+      show-details: always
+  info:
+    # Default "simple" mode abbreviates git.commit.id; "full" is required to
+    # surface the complete 40-char SHA needed to identify the deployed build.
+    git:
+      mode: full
