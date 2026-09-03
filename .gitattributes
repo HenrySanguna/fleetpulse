@@ -2,4 +2,21 @@
 # (openapi-generator, typescript-angular). Never hand-edit; regenerate with
 # `npm run generate:api-client` instead. See
 # openspec/changes/00-bootstrap-monorepo/design.md "Contrato Java -> TypeScript".
-libs/api-client/src/** linguist-generated=true
+# eol=lf: scripts/api-client/generate.mjs copies the generator's raw output
+# byte-for-byte (LF); without this, a CRLF-converted checkout on Windows
+# makes every generated file look "changed" to --check on line endings
+# alone, permanently failing the CI drift-check step (task 6.1) regardless
+# of whether the OpenAPI contract actually drifted.
+libs/api-client/src/** linguist-generated=true text eol=lf
+
+# Shell scripts must keep LF line endings regardless of the checkout
+# platform's core.autocrlf: a CRLF-converted gradlew or entrypoint.sh breaks
+# with "not found" / "syntax error" under /bin/sh, which is exactly what the
+# repo root Dockerfile's Gradle build stage runs (see openspec/changes/
+# 00-bootstrap-monorepo/tasks.md, task 6.4).
+backend/gradlew text eol=lf
+docker/**/*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+fly.toml text eol=lf
+.github/workflows/*.yml text eol=lf

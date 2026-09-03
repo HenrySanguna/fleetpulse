@@ -1,0 +1,19 @@
+# Everything outside backend/ that the backend Docker build never needs.
+# Deliberately does NOT ignore .git -- see Dockerfile, git properties comment.
+node_modules
+dist
+apps
+libs
+openspec
+scripts
+.nx
+.angular
+.vscode
+.idea
+coverage
+*.md
+
+# Stale local build/cache output; the image builds fresh inside the
+# container instead of reusing whatever happens to exist on the host.
+backend/**/build
+backend/.gradle

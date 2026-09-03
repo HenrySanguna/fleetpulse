@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  affected:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # See openspec/changes/00-bootstrap-monorepo/design.md, "Riesgo
+      # documentado": Gradle-under-Nx is reported flaky in CI in some setups.
+      # Mitigation here is pinning versions -- this step's java-version plus
+      # backend/gradle/wrapper/gradle-wrapper.properties and the plugin
+      # versions in backend/build.gradle.kts -- deliberately NOT automatic
+      # retries, which would mask the problem instead of surfacing it.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: nrwl/nx-set-shas@v5
+
+      # Covers both apps/console (Angular, via the @nx/angular-inferred
+      # targets) and backend/{api,processor,domain,geo-core} (Gradle, via
+      # the @nx/gradle project-graph integration registered in nx.json). A
+      # commit that only touches apps/console must not run any Gradle task
+      # here; a commit touching backend/domain must affect both api and
+      # processor (see tasks.md, "Definicion de terminado").
+      - name: nx affected -- lint, test, build
+        run: npx nx affected -t lint test build --parallel=3 --outputStyle=static
+
+      # Runs on every CI run, not scoped to "affected": libs/api-client can
+      # go stale from a hand-edit even on a commit where nx does not
+      # consider backend/api itself affected (tasks 6.1 and 4.3).
+      - name: API client drift check
+        run: npm run generate:api-client:check
+
+  docker-and-compose-smoke:
+    runs-on: ubuntu-latest
+    needs: affected
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build backend image
+        run: docker build -t fleetpulse-backend:ci .
+
+      # Reuses docker/postgis-partman/Dockerfile and
+      # docker/mosquitto/mosquitto.conf -- the same images docker-compose.yml
+      # already uses for local dev, and that the Gradle Testcontainers-backed
+      # tests build from directly (task 6.2).
+      - name: Start PostGIS and Mosquitto
+        run: docker compose -p fleetpulse-ci up -d --wait
+
+      - name: Run api and processor against them, verify /actuator/health
+        run: |
+          set -euo pipefail
+
+          network=$(docker network ls --filter label=com.docker.compose.project=fleetpulse-ci --format '{{.Name}}')
+
+          run_common=(
+            -e SPRING_PROFILES_ACTIVE=prod
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgis:5432/fleetpulse
+            -e SPRING_DATASOURCE_USERNAME=fleetpulse
+            -e SPRING_DATASOURCE_PASSWORD=fleetpulse
+            -e FLEETPULSE_MQTT_BROKERURL=tcp://mosquitto:1883
+          )
+
+          wait_http() {
+            for _ in $(seq 1 40); do
+              curl -s -o /dev/null "$1" && return 0
+              sleep 2
+            done
+            echo "timed out waiting for $1" >&2
+            return 1
+          }
+
+          wait_healthy() {
+            for _ in $(seq 1 40); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$1")
+              [ "$status" = "healthy" ] && return 0
+              if [ "$status" = "unhealthy" ]; then
+                echo "$1 reported unhealthy:" >&2
+                docker logs "$1"
+                return 1
+              fi
+              sleep 3
+            done
+            echo "$1 did not become healthy in time:" >&2
+            docker logs "$1"
+            return 1
+          }
+
+          docker run -d --name ci-api --network "$network" \
+            "${run_common[@]}" -e FLEETPULSE_PROCESS=api -p 8080:8080 \
+            fleetpulse-backend:ci
+          wait_http http://localhost:8080/actuator/health
+
+          # No processor running yet: the processorHeartbeat indicator (task
+          # 5.3) must be DOWN, and so must the aggregate status. If this ever
+          # reports UP, the heartbeat check is not wired to anything real.
+          curl -s http://localhost:8080/actuator/health | grep -q '"status":"DOWN"'
+
+          docker run -d --name ci-processor --network "$network" \
+            "${run_common[@]}" -e FLEETPULSE_PROCESS=processor \
+            fleetpulse-backend:ci
+          wait_healthy ci-processor
+
+          # processor publishes its first retained heartbeat within 30s of
+          # startup; api's own Docker HEALTHCHECK re-polls every 10s, so this
+          # picks up the transition once it happens.
+          wait_healthy ci-api
+          curl -s http://localhost:8080/actuator/health | grep -q '"status":"UP"'
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f ci-api ci-processor 2>/dev/null || true
+          docker compose -p fleetpulse-ci down -v
+
+  # Gated behind a repository *variable* (not just the branch/event check) so
+  # that merging this workflow does not immediately start failing CI on main
+  # with an unconfigured Fly.io app / token. Flip vars.FLY_DEPLOY_ENABLED to
+  # "true" once `fly launch` has been run and FLY_API_TOKEN is set (see
+  # fly.toml and the section 6 apply report for the exact manual steps).
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs: [affected, docker-and-compose-smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # Same opt-in pattern as deploy-backend, for the Cloudflare Pages side.
+  # Flip vars.CLOUDFLARE_DEPLOY_ENABLED once the Pages project exists and
+  # CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are set as repo secrets.
+  deploy-console:
+    runs-on: ubuntu-latest
+    needs: affected
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx nx build console --configuration=production
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist/apps/console/browser --project-name=fleetpulse-console
