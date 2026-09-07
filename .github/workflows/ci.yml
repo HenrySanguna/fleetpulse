@@ -12,6 +12,12 @@ concurrency:
 
 permissions:
   contents: read
+  # nx-set-shas needs this to query the last successful push-event workflow
+  # run on main via the Actions API when diffing "affected" projects on
+  # push (pull_request diffs against the PR base directly and never hit
+  # this path, which is why this was broken silently on every push to main
+  # -- gh pr checks only ever surfaces the pull_request-triggered run).
+  actions: read
 
 jobs:
   affected:
