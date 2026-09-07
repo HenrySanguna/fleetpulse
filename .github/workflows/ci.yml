@@ -139,14 +139,44 @@ jobs:
           docker rm -f ci-api ci-processor 2>/dev/null || true
           docker compose -p fleetpulse-ci down -v
 
+  # Deploys the private Mosquitto broker (fleetpulse-broker, fly-broker.toml)
+  # as its own Fly app -- Fly apps are one config file each. Reuses
+  # vars.FLY_DEPLOY_ENABLED rather than a broker-specific flag: both apps
+  # live in the same Fly org and deploy with the same FLY_API_TOKEN, so a
+  # second flag would only add a way for the two apps to silently drift out
+  # of sync (backend enabled against a broker app that was never created, or
+  # vice versa) without buying any real independence.
+  deploy-broker:
+    runs-on: ubuntu-latest
+    needs: [affected, docker-and-compose-smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --config fly-broker.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
   # Gated behind a repository *variable* (not just the branch/event check) so
   # that merging this workflow does not immediately start failing CI on main
   # with an unconfigured Fly.io app / token. Flip vars.FLY_DEPLOY_ENABLED to
   # "true" once `fly launch` has been run and FLY_API_TOKEN is set (see
-  # fly.toml and the section 6 apply report for the exact manual steps).
+  # fly.toml and openspec/changes/00-bootstrap-monorepo/tasks.md, task 6.5,
+  # for the exact manual steps).
+  #
+  # needs deploy-broker so the broker app exists before api/processor's
+  # first boot tries fleetpulse-broker.internal:1883 -- a cleanliness
+  # choice, not a correctness requirement: MqttClientFactoryConfig (backend/
+  # api and backend/processor) sets automaticReconnect(false) with a 5s
+  # timeout, and every caller (the health indicators, ProcessorHeartbeat
+  # Publisher) catches the resulting MqttException and reports DOWN / logs a
+  # warning instead of failing startup or crash-looping. Deploying backend
+  # before the broker existed would not break the release; it would just
+  # leave mqttBroker/processorHeartbeat transiently DOWN until the broker
+  # exists and the next scheduled attempt succeeds.
   deploy-backend:
     runs-on: ubuntu-latest
-    needs: [affected, docker-and-compose-smoke]
+    needs: [affected, docker-and-compose-smoke, deploy-broker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
     steps:
       - uses: actions/checkout@v7
@@ -154,6 +184,51 @@ jobs:
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # Task 6.6: "SHA correcto y latido de processor reciente" (design.md,
+  # "Salud"). The two JSON paths asserted below are proven against a real
+  # running instance by ActuatorInfoEndpointTest (git.commit.id.full) and
+  # ActuatorHealthEndpointTest (components.processorHeartbeat.status) --
+  # this step points the same two checks at the live deployment instead of
+  # a Testcontainers one. curl and jq are both preinstalled on
+  # ubuntu-latest; no new dependency.
+  verify-deploy:
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
+    steps:
+      - name: Verify deployed SHA and processor heartbeat
+        run: |
+          set -euo pipefail
+          base=https://fleetpulse-backend.fly.dev
+
+          fetch() {
+            for _ in $(seq 1 10); do
+              if body=$(curl -fsS "$1"); then
+                echo "$body"
+                return 0
+              fi
+              sleep 3
+            done
+            echo "failed to reach $1" >&2
+            return 1
+          }
+
+          info=$(fetch "$base/actuator/info")
+          deployed_sha=$(echo "$info" | jq -er '.git.commit.id.full')
+          if [ "$deployed_sha" != "${{ github.sha }}" ]; then
+            echo "deployed SHA $deployed_sha does not match workflow SHA ${{ github.sha }}" >&2
+            exit 1
+          fi
+
+          health=$(fetch "$base/actuator/health")
+          heartbeat_status=$(echo "$health" | jq -er '.components.processorHeartbeat.status')
+          if [ "$heartbeat_status" != "UP" ]; then
+            echo "processorHeartbeat is $heartbeat_status, expected UP" >&2
+            exit 1
+          fi
+
+          echo "verified: deployed SHA $deployed_sha matches, processorHeartbeat is UP"
 
   # Same opt-in pattern as deploy-backend, for the Cloudflare Pages side.
   # Flip vars.CLOUDFLARE_DEPLOY_ENABLED once the Pages project exists and
