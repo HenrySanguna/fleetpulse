@@ -44,8 +44,8 @@ RUN chmod +x /app/entrypoint.sh /app/healthcheck.sh \
 USER fleetpulse
 EXPOSE 8080
 
-# See entrypoint.sh / healthcheck.sh: FLEETPULSE_PROCESS (or Fly.io's own
-# FLY_PROCESS_GROUP) selects which jar runs and which check applies.
+# See entrypoint.sh / healthcheck.sh: FLEETPULSE_PROCESS selects which jar
+# runs and which check applies.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=45s --retries=5 \
     CMD ["/app/healthcheck.sh"]
 

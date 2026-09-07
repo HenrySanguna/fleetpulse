@@ -6,7 +6,7 @@ context: |
   Architecture: apps/console (Angular); backend/{api,processor,domain,geo-core} (Gradle modules). geo-core is pure Java, no Spring/JPA. api and processor depend on domain+geo-core, never on each other. libs/api-client is generated from OpenAPI, never hand-edited.
   Data: Neon Postgres + PostGIS + pg_partman, native declarative partitioning + BRIN indexes on positions. Mosquitto MQTT (QoS 0 telemetry / 1 commands / 2 alerts). Flyway migrations.
   Testing: JUnit 5 + Testcontainers + AssertJ (backend), Vitest + Playwright (frontend). geo-core requires 100% branch coverage. Every MQTT consumer needs idempotency + out-of-order tests. Spatial/history queries need an execution-plan test (no seq scan).
-  Constraints: zero cost, OSI-licensed dependencies only. No TimescaleDB, Redis, Mapbox GL JS, Spring Boot 3.x, or managed services beyond Neon/Fly.io/Cloudflare/GitHub.
+  Constraints: zero cost, OSI-licensed dependencies only. No TimescaleDB, Redis, Mapbox GL JS, Spring Boot 3.x, or managed services beyond Neon/Oracle Cloud/Cloudflare/GitHub.
   Status: greenfield -- only .gitignore and openspec/ committed so far. Change 00-bootstrap-monorepo scaffolds the code; changes 01-06 are already fully specified.
 
 rules:

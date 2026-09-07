@@ -139,68 +139,73 @@ jobs:
           docker rm -f ci-api ci-processor 2>/dev/null || true
           docker compose -p fleetpulse-ci down -v
 
-  # Deploys the private Mosquitto broker (fleetpulse-broker, fly-broker.toml)
-  # as its own Fly app -- Fly apps are one config file each. Reuses
-  # vars.FLY_DEPLOY_ENABLED rather than a broker-specific flag: both apps
-  # live in the same Fly org and deploy with the same FLY_API_TOKEN, so a
-  # second flag would only add a way for the two apps to silently drift out
-  # of sync (backend enabled against a broker app that was never created, or
-  # vice versa) without buying any real independence.
-  deploy-broker:
+  # Builds and pushes the single api+processor image to GHCR (no new account
+  # needed -- GHCR authenticates with the workflow's own GITHUB_TOKEN), then
+  # deploys api + processor + mosquitto together on the Oracle Cloud Always
+  # Free VM over SSH + Docker Compose (docker-compose.prod.yml). Replaces
+  # the prior two-Fly-app split (fly.toml + fly-broker.toml, deploy-broker +
+  # deploy-backend): one VM, one compose stack, the same shape as local
+  # dev's docker-compose.yml, just remote -- see
+  # openspec/changes/00-bootstrap-monorepo/tasks.md, task 6.5, for why Fly's
+  # tier stopped qualifying as a permanent free tier (project.md's cost-zero
+  # rule) and why Oracle's Always Free Ampere A1 VM does. Gated behind a
+  # repository *variable* so merging this workflow does not start failing
+  # CI on main before the VM/secrets exist -- flip
+  # vars.ORACLE_DEPLOY_ENABLED to "true" once task 6.5's manual steps are
+  # done.
+  deploy-oracle:
     runs-on: ubuntu-latest
     needs: [affected, docker-and-compose-smoke]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ORACLE_DEPLOY_ENABLED == 'true'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --config fly-broker.toml --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  # Gated behind a repository *variable* (not just the branch/event check) so
-  # that merging this workflow does not immediately start failing CI on main
-  # with an unconfigured Fly.io app / token. Flip vars.FLY_DEPLOY_ENABLED to
-  # "true" once `fly launch` has been run and FLY_API_TOKEN is set (see
-  # fly.toml and openspec/changes/00-bootstrap-monorepo/tasks.md, task 6.5,
-  # for the exact manual steps).
-  #
-  # needs deploy-broker so the broker app exists before api/processor's
-  # first boot tries fleetpulse-broker.internal:1883 -- a cleanliness
-  # choice, not a correctness requirement: MqttClientFactoryConfig (backend/
-  # api and backend/processor) sets automaticReconnect(false) with a 5s
-  # timeout, and every caller (the health indicators, ProcessorHeartbeat
-  # Publisher) catches the resulting MqttException and reports DOWN / logs a
-  # warning instead of failing startup or crash-looping. Deploying backend
-  # before the broker existed would not break the release; it would just
-  # leave mqttBroker/processorHeartbeat transiently DOWN until the broker
-  # exists and the next scheduled attempt succeeds.
-  deploy-backend:
-    runs-on: ubuntu-latest
-    needs: [affected, docker-and-compose-smoke, deploy-broker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # ghcr.io image paths must be lowercase; the repo owner (HenrySanguna)
+      # is not, so this is hardcoded rather than templated from
+      # github.repository_owner.
+      - name: Build and push backend image
+        run: |
+          image=ghcr.io/henrysanguna/fleetpulse-backend
+          docker build -t "$image:${{ github.sha }}" -t "$image:latest" .
+          docker push "$image:${{ github.sha }}"
+          docker push "$image:latest"
+
+      - name: Deploy to Oracle VM over SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/oracle_deploy_key
+          chmod 600 ~/.ssh/oracle_deploy_key
+          ssh-keyscan -H "${{ secrets.ORACLE_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+          rsync -az --relative -e "ssh -i ~/.ssh/oracle_deploy_key" \
+            docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf \
+            "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}:/opt/fleetpulse/"
+
+          ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \
+            "cd /opt/fleetpulse && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml pull && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d"
 
   # Task 6.6: "SHA correcto y latido de processor reciente" (design.md,
-  # "Salud"). The two JSON paths asserted below are proven against a real
-  # running instance by ActuatorInfoEndpointTest (git.commit.id.full) and
-  # ActuatorHealthEndpointTest (components.processorHeartbeat.status) --
-  # this step points the same two checks at the live deployment instead of
-  # a Testcontainers one. curl and jq are both preinstalled on
-  # ubuntu-latest; no new dependency.
+  # "Salud"). Same two JSON-path assertions as before, now pointed at the
+  # Oracle VM's public host (vars.PROD_API_URL) instead of a *.fly.dev
+  # hostname -- there is no Fly-managed DNS anymore, so this is a
+  # repository variable set once the VM has a known address (task 6.5).
+  # curl and jq are both preinstalled on ubuntu-latest; no new dependency.
   verify-deploy:
     runs-on: ubuntu-latest
-    needs: deploy-backend
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FLY_DEPLOY_ENABLED == 'true'
+    needs: deploy-oracle
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ORACLE_DEPLOY_ENABLED == 'true'
     steps:
       - name: Verify deployed SHA and processor heartbeat
         run: |
           set -euo pipefail
-          base=https://fleetpulse-backend.fly.dev
+          base="${{ vars.PROD_API_URL }}"
 
           fetch() {
             for _ in $(seq 1 10); do
@@ -230,7 +235,7 @@ jobs:
 
           echo "verified: deployed SHA $deployed_sha matches, processorHeartbeat is UP"
 
-  # Same opt-in pattern as deploy-backend, for the Cloudflare Pages side.
+  # Same opt-in pattern as deploy-oracle, for the Cloudflare Pages side.
   # Flip vars.CLOUDFLARE_DEPLOY_ENABLED once the Pages project exists and
   # CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are set as repo secrets.
   deploy-console:

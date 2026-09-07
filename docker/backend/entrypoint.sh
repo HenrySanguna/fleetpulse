@@ -4,13 +4,15 @@
 # artefacto" -- api and processor must always run the exact same build of
 # domain/geo-core, which two independently built images could not guarantee.
 #
-# FLEETPULSE_PROCESS=api|processor selects the jar explicitly. When unset,
-# falls back to FLY_PROCESS_GROUP, which Fly.io injects automatically for the
-# process group a machine belongs to (see fly.toml [processes]), so the same
-# image works unmodified as either Fly process group.
+# FLEETPULSE_PROCESS=api|processor selects the jar explicitly, set per
+# service in docker-compose.prod.yml (Oracle VM) and in the
+# docker-and-compose-smoke CI job. No provider-injected fallback: this used
+# to also accept FLY_PROCESS_GROUP for Fly.io, retired when hosting moved to
+# an Oracle Cloud Always Free VM (see openspec/project.md "Hosting" and
+# openspec/changes/00-bootstrap-monorepo/tasks.md, task 6.5).
 set -eu
 
-process="${FLEETPULSE_PROCESS:-${FLY_PROCESS_GROUP:-}}"
+process="${FLEETPULSE_PROCESS:-}"
 
 case "$process" in
   api)
@@ -20,7 +22,7 @@ case "$process" in
     exec java -jar /app/processor.jar
     ;;
   *)
-    echo "entrypoint.sh: FLEETPULSE_PROCESS (or FLY_PROCESS_GROUP) must be 'api' or 'processor', got '${process}'" >&2
+    echo "entrypoint.sh: FLEETPULSE_PROCESS must be 'api' or 'processor', got '${process}'" >&2
     exit 1
     ;;
 esac

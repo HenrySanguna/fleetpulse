@@ -1,0 +1,80 @@
+# Production stack for the Oracle Cloud "Always Free" VM (single Ampere A1
+# instance, no scale-to-zero) -- see openspec/project.md "Hosting" and
+# openspec/changes/00-bootstrap-monorepo/tasks.md, task 6.5, for why: the
+# processor process runs a long-lived MQTT consumer plus @Scheduled
+# background tasks, so it needs a real always-on VM, not a request-triggered
+# serverless target. Same shape as local dev's docker-compose.yml, just
+# remote: api + processor + mosquitto as three containers on one host,
+# reachable over Docker Compose's own bridge network by service name --
+# already proven to work for this exact pattern by
+# .github/workflows/ci.yml's docker-and-compose-smoke job (task 6.2), which
+# resolves postgis/mosquitto the same way.
+#
+# Deployed by the deploy-oracle job in .github/workflows/ci.yml: this file
+# and docker/mosquitto/mosquitto.prod.conf are rsynced to the VM, then
+# `docker compose -f docker-compose.prod.yml pull && ... up -d` runs over
+# SSH. Requires a .env file already present next to this file on the VM
+# (not committed -- see tasks.md task 6.5's manual setup list) providing
+# SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME /
+# SPRING_DATASOURCE_PASSWORD for the real Neon database -- Neon itself is
+# unaffected by this migration, only the compute target changed.
+#
+# api is the only service with a published port: processor exposes no HTTP
+# (design.md, "Salud") and mosquitto stays private, same posture as the
+# retired fly-broker.toml -- no public/WS broker access until change
+# 02-add-fleet-auth lands real ACLs.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./docker/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - fleetpulse
+
+  api:
+    image: ghcr.io/henrysanguna/fleetpulse-backend:${IMAGE_TAG:-latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      FLEETPULSE_PROCESS: api
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      FLEETPULSE_MQTT_BROKERURL: tcp://mosquitto:1883
+    ports:
+      - "8080:8080"
+    # Not required for correctness -- MqttClientFactoryConfig catches
+    # MqttException and reports DOWN instead of failing startup -- just
+    # cleaner boot ordering (same reasoning documented for the retired
+    # deploy-broker -> deploy-backend needs: in prior ci.yml revisions).
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fleetpulse
+
+  processor:
+    image: ghcr.io/henrysanguna/fleetpulse-backend:${IMAGE_TAG:-latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      FLEETPULSE_PROCESS: processor
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      FLEETPULSE_MQTT_BROKERURL: tcp://mosquitto:1883
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fleetpulse
+
+networks:
+  fleetpulse:
+    driver: bridge
