@@ -19,4 +19,5 @@ docker/**/*.sh text eol=lf
 Dockerfile text eol=lf
 .dockerignore text eol=lf
 fly.toml text eol=lf
+fly-broker.toml text eol=lf
 .github/workflows/*.yml text eol=lf

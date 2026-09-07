@@ -15,12 +15,19 @@
 # the [processes] key below -- to decide which jar to run, so no per-process
 # env override is needed here.
 #
-# NOT deployed by this change: no Fly app named "fleetpulse-backend" exists
-# yet and no FLY_API_TOKEN secret is configured. See the section 6 apply
-# report for the exact manual steps (fly launch, fly volumes create if a
-# managed Postgres is added later, fly secrets set, repo secret/variable
-# setup) required before deploy-backend in .github/workflows/ci.yml can run
-# for real.
+# The MQTT broker is a separate Fly app (fleetpulse-broker, fly-broker.toml)
+# reachable only over Fly's private network -- see that file for the design
+# reasoning. Once it exists, wire it up with:
+#   fly secrets set FLEETPULSE_MQTT_BROKERURL=tcp://fleetpulse-broker.internal:1883 -a fleetpulse-backend
+#
+# NOT deployed by this change: no Fly app named "fleetpulse-backend" or
+# "fleetpulse-broker" exists yet and no FLY_API_TOKEN secret is configured.
+# See openspec/changes/00-bootstrap-monorepo/tasks.md, tasks 6.5/6.6, for
+# the exact manual steps (fly launch / fly apps create for both apps, fly
+# volumes create if a managed Postgres is added later, fly secrets set
+# including the command above, repo secret/variable setup) required before
+# deploy-backend and deploy-broker in .github/workflows/ci.yml can run for
+# real.
 app = "fleetpulse-backend"
 primary_region = "iad"
 
