@@ -7,7 +7,9 @@
 # not from inside this container.
 set -eu
 
-process="${FLEETPULSE_PROCESS:-${FLY_PROCESS_GROUP:-}}"
+# See entrypoint.sh: no provider-injected fallback since the Oracle Cloud
+# migration -- FLEETPULSE_PROCESS is always set explicitly by the caller.
+process="${FLEETPULSE_PROCESS:-}"
 
 if [ "$process" = "processor" ]; then
   # PID 1 is the java process itself (entrypoint.sh execs it); if it is gone,

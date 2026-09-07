@@ -45,7 +45,7 @@ Plataforma de seguimiento logístico en tiempo real. Los dispositivos a bordo de
 | Series temporales | **Particionado declarativo nativo + `pg_partman` + índices BRIN** | Es lo que la propia documentación de Neon recomienda |
 | Broker MQTT | **Mosquitto** (EPL/EDL), autoalojado en contenedor | |
 | CI/CD | **GitHub Actions** con `nx affected` | |
-| Hosting | **Fly.io** (dos procesos) + **Cloudflare Pages** (consola) | |
+| Hosting | **Oracle Cloud "Always Free"** (Ampere A1, una sola VM, `api`+`processor`+Mosquitto vía Docker Compose) + **Cloudflare Pages** (consola) | Fly.io eliminó su tier gratuito permanente en 2024 (ahora requiere tarjeta y factura por uso); Oracle Always Free Ampere A1 (2 OCPU / 12GB RAM en los términos vigentes) es una VM real, gratuita mientras no se exceda la cuota, y no es serverless/scale-to-zero, requisito para `processor` (consumidor MQTT de larga duración + tareas `@Scheduled`) |
 
 **Restricción transversal: coste cero y solo open source.** Toda dependencia debe tener licencia OSI. Toda infraestructura debe usar tiers gratuitos permanentes. Si una propuesta requiere gasto o una licencia no libre, debe decirlo explícitamente y justificarlo.
 
@@ -57,7 +57,7 @@ Plataforma de seguimiento logístico en tiempo real. Los dispositivos a bordo de
 | **Redis** | RSALv2/SSPL desde 2024 | **Valkey** (BSD) si hiciera falta caché o pub/sub |
 | **Mapbox GL JS** | Licencia propietaria desde v2, requiere token de pago | **MapLibre GL JS** |
 | **Spring Boot 3.x** | Fuera de soporte OSS desde junio de 2026 | Spring Boot 4.1 |
-| Servicios gestionados adicionales | El proyecto no debe requerir dar de alta más cuentas de las ya previstas (Neon, Fly.io, Cloudflare, GitHub) | Autoalojar en contenedor |
+| Servicios gestionados adicionales | El proyecto no debe requerir dar de alta más cuentas de las ya previstas (Neon, Oracle Cloud, Cloudflare, GitHub) | Autoalojar en contenedor |
 
 ## Estructura del monorepo
 
