@@ -9,8 +9,12 @@ services:
       POSTGRES_PASSWORD: fleetpulse
     ports:
       - "5432:5432"
+    # PostgreSQL 18's official image stores data in a version-specific
+    # subdirectory (pg_ctlcluster-style) and refuses to start if the mount
+    # point is .../data directly, as pre-18 images expected -- mount the
+    # parent instead. See https://github.com/docker-library/postgres/pull/1259
     volumes:
-      - fleetpulse-postgis-data:/var/lib/postgresql/data
+      - fleetpulse-postgis-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fleetpulse -d fleetpulse"]
       interval: 5s
