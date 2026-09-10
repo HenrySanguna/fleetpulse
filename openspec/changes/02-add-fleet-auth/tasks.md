@@ -2,12 +2,18 @@
 
 ## Review Workload Forecast
 
-**Decision needed before apply: Yes**
+**Decision needed before apply: No — resolved, see below**
 **Chained PRs recommended: Yes**
 **400-line budget risk: High**
-**Chain strategy: pending — awaiting orchestrator/user decision**
+**Chain strategy: feature-branch-chain (user-confirmed)** — PR #1 (WU1) targets tracker branch `feat/fleet-auth`; each later WU's PR targets the immediately previous WU's branch; the tracker branch PRs to `main` once all WUs are merged into it. Each work unit is individually accepted under an explicit user-granted `size:exception` even when it exceeds 400 lines alone — do not stop again for budget risk within a WU.
 
-This forecast was produced by `sdd-apply` on first launch, not by `sdd-tasks` (this change's `tasks.md` predates the Review Workload Forecast convention). No code was written before this forecast; `sdd-apply` stopped per the mandatory workload guard.
+This forecast was produced by `sdd-apply` on first launch, not by `sdd-tasks` (this change's `tasks.md` predates the Review Workload Forecast convention). No code was written before that first launch; `sdd-apply` stopped per the mandatory workload guard until the decision below was confirmed.
+
+**Mosquitto integration decision (relevant to WU3/WU4, confirmed, not a deviation to flag):** use the broker's built-in `dynamic-security` plugin (control-topic driven from the backend), not a custom auth plugin image. This resolves the tension noted below between design.md's literal wording and the stock `eclipse-mosquitto:2` image; document it as intentional in `design.md`/here when WU3/WU4 land.
+
+### WU1 — Data model & migration: DONE
+
+Tasks 1.1–1.3 complete on branch `feat/fleet-auth-wu1-data-model` (off `feat/fleet-auth`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed). Resume point for the next `sdd-apply` run: WU2 (task 2.1), branch `feat/fleet-auth-wu2-session` off `feat/fleet-auth-wu1-data-model`.
 
 ### Why this change is high risk for the 400-line budget
 
@@ -47,9 +53,9 @@ Each of these 4 work units still exceeds 400 lines on its own; a finer split (e.
 No implementation code has been written. `sdd-apply` will resume from task 1.1 once a chain strategy (or `size:exception`) is confirmed.
 
 ## 1. Modelo
-- [ ] 1.1 Entidades JPA `Organization`, `User`, `Device`, `MqttCredential`; migración Flyway
-- [ ] 1.2 Relación `Device` → `Vehicle` → `Organization`
-- [ ] 1.3 Spring Session con JDBC para persistir sesiones de despachador
+- [x] 1.1 Entidades JPA `Organization`, `User`, `Device`, `MqttCredential`; migración Flyway
+- [x] 1.2 Relación `Device` → `Vehicle` → `Organization`
+- [x] 1.3 Spring Session con JDBC para persistir sesiones de despachador
 
 ## 2. Sesión de despachador
 - [ ] 2.1 Spring Security con autenticación por formulario y hash de contraseña con Argon2 o BCrypt

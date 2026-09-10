@@ -19,6 +19,12 @@ dependencies {
     // Publishes the OpenAPI document at /v3/api-docs; libs/api-client is generated
     // from it (see openspec change 00-bootstrap-monorepo, section 4).
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
+    // Dispatcher sessions persisted server-side (02-add-fleet-auth, task 1.3):
+    // survives api restarts and lets a deactivated user lose access on their
+    // very next request instead of waiting for a self-contained token to
+    // expire. Spring Boot 4.1 split session autoconfiguration into its own
+    // module, which transitively brings org.springframework.session:spring-session-jdbc.
+    implementation("org.springframework.boot:spring-boot-session-jdbc")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

@@ -1,6 +1,19 @@
 spring:
   application:
     name: fleetpulse-api
+  jpa:
+    # Flyway is the only source of schema truth; Hibernate must never create
+    # or alter tables (project.md: "Nada de synchronize... fuera de desarrollo").
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  session:
+    store-type: jdbc
+    jdbc:
+      # Flyway (domain module's V4 migration) owns the SPRING_SESSION schema
+      # instead of Spring Session's own initializer, so it stays versioned
+      # like every other table.
+      initialize-schema: never
 
 management:
   endpoints:
