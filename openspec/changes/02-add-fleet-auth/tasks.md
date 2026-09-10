@@ -98,6 +98,7 @@ No implementation code has been written. `sdd-apply` will resume from task 1.1 o
 - [x] 6.5 Revocar un dispositivo corta su conexión activa
 - [x] 6.6 Conexión anónima rechazada en ambos listeners
 - [x] 6.7 Desactivar un despachador invalida su sesión HTTP en la petición siguiente
+- [x] 6.8 Renovación de credenciales MQTT tras revocar la sesión del despachador (`GET /api/mqtt/credentials` devuelve 401 tras desactivar) — *added during sdd-verify remediation: this scenario existed in specs/fleet-auth/spec.md but was never allocated a task in this section, so it predated WU4 and stayed untested until `MqttCredentialsAfterDispatcherDeactivationTest` closed the gap.*
 
 ## Definición de terminado
 - [x] Ningún test consigue una suscripción cruzada entre organizaciones
