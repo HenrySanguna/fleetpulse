@@ -1,10 +1,12 @@
 package dev.fleetpulse.processor.mqtt;
 
+import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.util.StringUtils;
 
 @Configuration
 public class MqttClientFactoryConfig {
@@ -14,12 +16,21 @@ public class MqttClientFactoryConfig {
     private static final int CONNECTION_TIMEOUT_SECONDS = 5;
 
     @Bean
-    MqttPahoClientFactory mqttPahoClientFactory() {
+    MqttPahoClientFactory mqttPahoClientFactory(FleetpulseMqttServiceCredentialsProperties serviceCredentials) {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         MqttConnectOptions connectOptions = new MqttConnectOptions();
         connectOptions.setConnectionTimeout(CONNECTION_TIMEOUT_SECONDS);
         connectOptions.setAutomaticReconnect(false);
         connectOptions.setCleanSession(true);
+        // 02-add-fleet-auth, tasks 5.1/5.2: the broker denies anonymous
+        // connections, so this shared factory must authenticate as the
+        // broad-access "internal-services" dynsec identity. Left unset when
+        // blank so contexts that never bind a real value keep working
+        // exactly as before.
+        if (StringUtils.hasText(serviceCredentials.username()) && StringUtils.hasText(serviceCredentials.password())) {
+            connectOptions.setUserName(serviceCredentials.username());
+            connectOptions.setPassword(serviceCredentials.password().toCharArray());
+        }
         factory.setConnectionOptions(connectOptions);
         return factory;
     }

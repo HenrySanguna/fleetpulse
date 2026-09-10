@@ -42,6 +42,14 @@ public class SecurityConfig {
                 // before this change) -- the document describes the API, it
                 // is not itself sensitive.
                 .requestMatchers("/v3/api-docs/**").permitAll()
+                // Same reasoning, same non-sensitivity, as /v3/api-docs/**
+                // above: springdoc-openapi-starter-webmvc-ui (already on the
+                // classpath since 00-bootstrap-monorepo) serves this
+                // interactive documentation page from that same document.
+                // Without this it would have been a latent permission gap
+                // introduced by adding Spring Security in WU2, caught and
+                // closed here (02-add-fleet-auth, WU3).
+                .requestMatchers("/swagger-ui.html", "/swagger-ui/**").permitAll()
                 .anyRequest().authenticated())
             .formLogin(form -> form
                 .loginProcessingUrl("/login")

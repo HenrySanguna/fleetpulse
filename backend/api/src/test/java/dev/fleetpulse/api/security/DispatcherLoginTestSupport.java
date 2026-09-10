@@ -15,13 +15,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Shared by the dispatcher-session integration tests (REFACTOR step): logs
 // in over /login and turns the resulting Set-Cookie header into a header set
 // a later request can replay, since TestRestTemplate has no cookie jar of
-// its own to do this automatically.
-final class DispatcherLoginTestSupport {
+// its own to do this automatically. Public (02-add-fleet-auth, WU3): reused
+// from dev.fleetpulse.api.mqtt.credentials' CrossOrganizationMqttIsolationTest
+// and ExpiredBrowserCredentialConnectionTest, which also need an
+// authenticated dispatcher session.
+public final class DispatcherLoginTestSupport {
 
     private DispatcherLoginTestSupport() {
     }
 
-    static ResponseEntity<String> login(TestRestTemplate restTemplate, String baseUrl, String email, String rawPassword) {
+    public static ResponseEntity<String> login(TestRestTemplate restTemplate, String baseUrl, String email, String rawPassword) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("username", email);
         form.add("password", rawPassword);
@@ -32,7 +35,7 @@ final class DispatcherLoginTestSupport {
         return restTemplate.postForEntity(baseUrl + "/login", new HttpEntity<>(form, headers), String.class);
     }
 
-    static HttpHeaders sessionHeadersFrom(ResponseEntity<?> loginResponse) {
+    public static HttpHeaders sessionHeadersFrom(ResponseEntity<?> loginResponse) {
         List<String> cookies = loginResponse.getHeaders().get(HttpHeaders.SET_COOKIE);
         assertThat(cookies).isNotNull().isNotEmpty();
         HttpHeaders headers = new HttpHeaders();
