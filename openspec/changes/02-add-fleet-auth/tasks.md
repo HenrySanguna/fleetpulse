@@ -13,7 +13,11 @@ This forecast was produced by `sdd-apply` on first launch, not by `sdd-tasks` (t
 
 ### WU1 — Data model & migration: DONE
 
-Tasks 1.1–1.3 complete on branch `feat/fleet-auth-wu1-data-model` (off `feat/fleet-auth`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed). Resume point for the next `sdd-apply` run: WU2 (task 2.1), branch `feat/fleet-auth-wu2-session` off `feat/fleet-auth-wu1-data-model`.
+Tasks 1.1–1.3 complete on branch `feat/fleet-auth-wu1-data-model` (off `feat/fleet-auth`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed).
+
+### WU2 — Dispatcher session & authorization: DONE
+
+Tasks 2.1–2.5 and spec scenario 6.7 complete on branch `feat/fleet-auth-wu2-session` (off `feat/fleet-auth-wu1-data-model`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed, the DataSource-less-profile regression found and fixed along the way). Resume point for the next `sdd-apply` run: WU3 (tasks 5.1–5.2, 3.1–3.3, scenarios 6.1/6.4/6.6), branch `feat/fleet-auth-wu3-mosquitto-browser-creds` off `feat/fleet-auth-wu2-session`.
 
 ### Why this change is high risk for the 400-line budget
 
@@ -58,11 +62,11 @@ No implementation code has been written. `sdd-apply` will resume from task 1.1 o
 - [x] 1.3 Spring Session con JDBC para persistir sesiones de despachador
 
 ## 2. Sesión de despachador
-- [ ] 2.1 Spring Security con autenticación por formulario y hash de contraseña con Argon2 o BCrypt
-- [ ] 2.2 Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict`
-- [ ] 2.3 Resolución del `orgId` del usuario autenticado en cada petición
-- [ ] 2.4 Autorización por rol (`DISPATCHER`, `FLEET_ADMIN`) con anotaciones de método
-- [ ] 2.5 Invalidación de sesión al desactivar un usuario
+- [x] 2.1 Spring Security con autenticación por formulario y hash de contraseña con Argon2 o BCrypt
+- [x] 2.2 Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict`
+- [x] 2.3 Resolución del `orgId` del usuario autenticado en cada petición
+- [x] 2.4 Autorización por rol (`DISPATCHER`, `FLEET_ADMIN`) con anotaciones de método
+- [x] 2.5 Invalidación de sesión al desactivar un usuario
 
 ## 3. Credenciales MQTT de navegador
 - [ ] 3.1 `GET /api/mqtt/credentials`: genera credenciales efímeras ligadas a la sesión
@@ -85,7 +89,7 @@ No implementation code has been written. `sdd-apply` will resume from task 1.1 o
 - [ ] 6.4 Credenciales de navegador expiradas no permiten conexión
 - [ ] 6.5 Revocar un dispositivo corta su conexión activa
 - [ ] 6.6 Conexión anónima rechazada en ambos listeners
-- [ ] 6.7 Desactivar un despachador invalida su sesión HTTP en la petición siguiente
+- [x] 6.7 Desactivar un despachador invalida su sesión HTTP en la petición siguiente
 
 ## Definición de terminado
 - [ ] Ningún test consigue una suscripción cruzada entre organizaciones

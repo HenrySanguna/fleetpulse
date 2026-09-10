@@ -1,0 +1,84 @@
+package dev.fleetpulse.api.security;
+
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
+
+// Task 2.1/2.2/2.4: form-based dispatcher session auth. Entry point and login
+// handlers are overridden to return plain status codes instead of Spring
+// Security's default browser redirects -- this is a JSON API backing an
+// Angular console, not a server-rendered login page.
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+public class SecurityConfig {
+
+    // Task 2.1: Argon2 preferred over BCrypt (tasks.md). Spring Security's
+    // Argon2PasswordEncoder salts each hash independently, so two encodings
+    // of the same raw password never match byte-for-byte.
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
+    }
+
+    @Bean
+    public SecurityFilterChain dispatcherSecurityFilterChain(
+            HttpSecurity http,
+            DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter) throws Exception {
+        http
+            .authorizeHttpRequests(authorize -> authorize
+                .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                .requestMatchers("/login").permitAll()
+                // Published for libs/api-client codegen (00-bootstrap-monorepo,
+                // section 4; OpenApiDocumentPublicationTest, pre-existing
+                // before this change) -- the document describes the API, it
+                // is not itself sensitive.
+                .requestMatchers("/v3/api-docs/**").permitAll()
+                .anyRequest().authenticated())
+            .formLogin(form -> form
+                .loginProcessingUrl("/login")
+                .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
+                .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
+                .permitAll())
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, authException) ->
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
+            // /login is exempt because there is no prior authenticated
+            // session to source a CSRF token from; every other state-changing
+            // endpoint keeps Spring Security's default session-bound CSRF
+            // protection.
+            .csrf(csrf -> csrf.ignoringRequestMatchers("/login"))
+            // Task 2.5: must run after SecurityContextHolderFilter (which
+            // restores the Authentication persisted in the session) and
+            // before AuthorizationFilter (which decides access), so a
+            // deactivated dispatcher is already anonymous by the time
+            // authorization runs.
+            .addFilterAfter(deactivatedDispatcherSessionFilter, SecurityContextHolderFilter.class);
+        return http.build();
+    }
+
+    // DeactivatedDispatcherSessionFilter is also a @Component (needed so
+    // Spring can build it with its own dependencies before wiring it into
+    // the chain above). Without this, Spring Boot would additionally
+    // auto-register it as a second, independent servlet filter outside
+    // Spring Security's own chain; OncePerRequestFilter would no-op that
+    // second invocation, but registering it only once is the documented,
+    // correct way to use a @Component filter exclusively through
+    // HttpSecurity.
+    @Bean
+    public FilterRegistrationBean<DeactivatedDispatcherSessionFilter> disableAutoRegistrationOf(
+            DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter) {
+        FilterRegistrationBean<DeactivatedDispatcherSessionFilter> registration =
+            new FilterRegistrationBean<>(deactivatedDispatcherSessionFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+}
