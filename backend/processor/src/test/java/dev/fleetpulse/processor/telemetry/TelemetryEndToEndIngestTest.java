@@ -1,5 +1,6 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryBufferProperties;
@@ -173,6 +174,7 @@ class TelemetryEndToEndIngestTest {
         ctx.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         ctx.registerBean(FleetpulseTelemetryImplausibilityProperties.class, () -> new FleetpulseTelemetryImplausibilityProperties(300.0));
         ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(bufferMaxSize, flushInterval));
+        ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -181,8 +183,8 @@ class TelemetryEndToEndIngestTest {
         // the real app gets this for free from Boot's IntegrationAutoConfiguration.
         ctx.register(
             IntegrationTestConfig.class, TelemetryMqttConfig.class, TelemetryPayloadParser.class,
-            TelemetryImplausibilityFilter.class, JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class,
-            TelemetryMessageListener.class
+            TelemetryImplausibilityFilter.class, VehicleMotionStreakTracker.class, JdbcTelemetryPositionWriter.class,
+            TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
         return ctx;
