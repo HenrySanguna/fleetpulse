@@ -11,20 +11,33 @@ import org.springframework.stereotype.Component;
 
 // Task 2.3: a malformed payload is discarded and counted, never allowed to
 // propagate out of this handler, so the consumer keeps processing later
-// messages (test 6.9). No persistence happens yet -- filtering implausible
-// positions (task 2.4) and buffering for batch writes belong to a later work
-// unit; a valid message is only counted and logged here.
+// messages (test 6.9). WU5: a validated message is then handed to the
+// implausibility filter (task 2.4) and, if plausible, buffered for batch
+// writing (tasks 3.1-3.3) -- the same order TelemetryBatchWriteTest already
+// exercises directly against the filter/buffer/writer without MQTT
+// (`if (filter.isPlausible(message)) { buffer.add(message); }`). Nothing
+// else changes about that pipeline here: this is composition, not new
+// domain logic.
 @Component
 public class TelemetryMessageListener {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryMessageListener.class);
 
     private final TelemetryPayloadParser payloadParser;
+    private final TelemetryImplausibilityFilter implausibilityFilter;
+    private final TelemetryPositionBuffer positionBuffer;
     private final Counter validMessageCounter;
     private final Counter malformedMessageCounter;
 
-    public TelemetryMessageListener(TelemetryPayloadParser payloadParser, MeterRegistry meterRegistry) {
+    public TelemetryMessageListener(
+        TelemetryPayloadParser payloadParser,
+        TelemetryImplausibilityFilter implausibilityFilter,
+        TelemetryPositionBuffer positionBuffer,
+        MeterRegistry meterRegistry
+    ) {
         this.payloadParser = payloadParser;
+        this.implausibilityFilter = implausibilityFilter;
+        this.positionBuffer = positionBuffer;
         this.validMessageCounter = Counter.builder("fleetpulse.telemetry.messages.valid")
             .description("Telemetry MQTT messages that passed payload validation")
             .register(meterRegistry);
@@ -41,6 +54,9 @@ public class TelemetryMessageListener {
             validMessageCounter.increment();
             log.debug("Accepted telemetry message for vehicle {} recorded at {}",
                 telemetryMessage.vehicleId(), telemetryMessage.recordedAt());
+            if (implausibilityFilter.isPlausible(telemetryMessage)) {
+                positionBuffer.add(telemetryMessage);
+            }
         } catch (RuntimeException ex) {
             malformedMessageCounter.increment();
             log.warn("Discarding malformed telemetry message on topic {}: {}", topic, ex.getMessage());
