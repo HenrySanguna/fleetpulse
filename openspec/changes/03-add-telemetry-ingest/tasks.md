@@ -68,7 +68,7 @@ PR #1 targets `feat/telemetry-ingest` (the tracker branch, created off `main`); 
 
 </details>
 
-WU1 (1.1, 1.2, 1.4) and WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item) are done under this finalized plan. `sdd-apply` resumes at WU3 (tasks 2.1-2.3 + test 6.9).
+WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), and WU3 (2.1-2.3 + test 6.9) are done under this finalized plan. `sdd-apply` resumes at WU4 (tasks 2.4, 3.1-3.3 + tests 6.5, 6.10).
 
 ## 1. Esquema y particionado
 - [x] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
@@ -78,9 +78,9 @@ WU1 (1.1, 1.2, 1.4) and WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item
 - [x] 1.5 Tarea `@Scheduled` que invoca `partman.run_maintenance_proc()` explícitamente
 
 ## 2. Consumo MQTT
-- [ ] 2.1 Adaptador entrante de Spring Integration suscrito a `fleet/+/vehicle/+/telemetry`
-- [ ] 2.2 QoS por adaptador: telemetría 0, comandos 1, alertas 2
-- [ ] 2.3 Validación del payload; los mensajes malformados se descartan y se contabilizan, no tumban el consumidor
+- [x] 2.1 Adaptador entrante de Spring Integration suscrito a `fleet/+/vehicle/+/telemetry`
+- [x] 2.2 QoS por adaptador: telemetría 0, comandos 1, alertas 2 — solo el adaptador de telemetría (QoS 0) existe en este change; ningún change actual define un tópico de comandos, y el tópico de alertas (QoS 2) pertenece a `06-add-trips-eta-alerts`, así que no se crearon adaptadores de comandos/alertas aquí
+- [x] 2.3 Validación del payload; los mensajes malformados se descartan y se contabilizan, no tumban el consumidor
 - [ ] 2.4 Descarte de posiciones implausibles usando `Geo.isImplausible` de `geo-core`
 
 ## 3. Escritura por lotes
@@ -106,7 +106,7 @@ WU1 (1.1, 1.2, 1.4) and WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item
 - [ ] 6.6 Desconexión abrupta del dispositivo → el broker publica el testamento → el vehículo queda offline
 - [ ] 6.7 Reconexión → el vehículo vuelve a online
 - [x] 6.8 El plan de ejecución de la consulta de histórico por vehículo y rango NO contiene recorrido secuencial sobre `positions`
-- [ ] 6.9 Payload malformado no derriba el consumidor
+- [x] 6.9 Payload malformado no derriba el consumidor
 - [ ] 6.10 El apagado ordenado descarga el buffer pendiente
 
 ## Definición de terminado
