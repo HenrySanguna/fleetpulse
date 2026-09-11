@@ -7,3 +7,12 @@ spring:
 fleetpulse:
   mqtt:
     broker-url: tcp://localhost:1883
+    dynsec:
+      admin-username: admin
+      admin-password: fleetpulse-dynsec-admin
+    service:
+      username: internal-services
+      password: fleetpulse-dynsec-service
+    browser:
+      ws-url: ws://localhost:9001
+      credential-ttl: PT5M

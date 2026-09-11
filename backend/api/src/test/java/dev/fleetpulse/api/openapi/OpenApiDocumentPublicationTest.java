@@ -53,4 +53,16 @@ class OpenApiDocumentPublicationTest {
         assertThat(document.path("openapi").asString()).isNotBlank();
         assertThat(document.has("paths")).isTrue();
     }
+
+    // 02-add-fleet-auth, WU3 follow-up: adding Spring Security in WU2 made
+    // every previously-open endpoint deny-by-default, including
+    // springdoc's interactive UI over this same document -- SecurityConfig
+    // now permits it for the same reason as /v3/api-docs/** above.
+    @Test
+    void swaggerUiIsReachableWithoutAuthentication() {
+        ResponseEntity<String> response = restTemplate
+            .getForEntity("http://localhost:" + port + "/swagger-ui/index.html", String.class);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+    }
 }

@@ -26,10 +26,20 @@
 services:
   mosquitto:
     image: eclipse-mosquitto:2
+    environment:
+      # 02-add-fleet-auth, tasks 5.1/5.2 -- required, no default, same posture
+      # as SPRING_DATASOURCE_PASSWORD below: must come from the VM's untracked
+      # .env file. See docker/mosquitto/bootstrap-and-run.sh.
+      MOSQUITTO_DYNSEC_ADMIN_USERNAME: ${MOSQUITTO_DYNSEC_ADMIN_USERNAME}
+      MOSQUITTO_DYNSEC_ADMIN_PASSWORD: ${MOSQUITTO_DYNSEC_ADMIN_PASSWORD}
+      MOSQUITTO_DYNSEC_SERVICE_USERNAME: ${MOSQUITTO_DYNSEC_SERVICE_USERNAME}
+      MOSQUITTO_DYNSEC_SERVICE_PASSWORD: ${MOSQUITTO_DYNSEC_SERVICE_PASSWORD}
     volumes:
       - ./docker/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/bootstrap-and-run.sh:/mosquitto/bootstrap-and-run.sh:ro
+    command: ["sh", "/mosquitto/bootstrap-and-run.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_sub -u \"$$MOSQUITTO_DYNSEC_SERVICE_USERNAME\" -P \"$$MOSQUITTO_DYNSEC_SERVICE_PASSWORD\" -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -46,6 +56,19 @@ services:
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       FLEETPULSE_MQTT_BROKERURL: tcp://mosquitto:1883
+      # 02-add-fleet-auth: api is the only process that speaks the
+      # dynamic-security control topic (credential issuance, task 3.1); the
+      # service identity below is for its own health indicator's ordinary
+      # broker connectivity check.
+      FLEETPULSE_MQTT_DYNSEC_ADMINUSERNAME: ${MOSQUITTO_DYNSEC_ADMIN_USERNAME}
+      FLEETPULSE_MQTT_DYNSEC_ADMINPASSWORD: ${MOSQUITTO_DYNSEC_ADMIN_PASSWORD}
+      FLEETPULSE_MQTT_SERVICE_USERNAME: ${MOSQUITTO_DYNSEC_SERVICE_USERNAME}
+      FLEETPULSE_MQTT_SERVICE_PASSWORD: ${MOSQUITTO_DYNSEC_SERVICE_PASSWORD}
+      # Inert until mosquitto publishes a WebSocket port on this VM (04-add-live-map's
+      # concern, see the "no public/WS broker access" note above): GET
+      # /api/mqtt/credentials still returns this value today, no client can use it yet.
+      FLEETPULSE_MQTT_BROWSER_WSURL: ${FLEETPULSE_MQTT_BROWSER_WSURL:-ws://mosquitto:9001}
+      FLEETPULSE_MQTT_BROWSER_CREDENTIALTTL: PT5M
     ports:
       - "8080:8080"
     # Not required for correctness -- MqttClientFactoryConfig catches
@@ -68,6 +91,10 @@ services:
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       FLEETPULSE_MQTT_BROKERURL: tcp://mosquitto:1883
+      # 02-add-fleet-auth: processor never talks to the dynamic-security
+      # control topic, only the service identity for its heartbeat publish.
+      FLEETPULSE_MQTT_SERVICE_USERNAME: ${MOSQUITTO_DYNSEC_SERVICE_USERNAME}
+      FLEETPULSE_MQTT_SERVICE_PASSWORD: ${MOSQUITTO_DYNSEC_SERVICE_PASSWORD}
     depends_on:
       mosquitto:
         condition: service_healthy
