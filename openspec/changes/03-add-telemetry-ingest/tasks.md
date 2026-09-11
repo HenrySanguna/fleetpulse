@@ -68,7 +68,7 @@ PR #1 targets `feat/telemetry-ingest` (the tracker branch, created off `main`); 
 
 </details>
 
-WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), and WU3 (2.1-2.3 + test 6.9) are done under this finalized plan. `sdd-apply` resumes at WU4 (tasks 2.4, 3.1-3.3 + tests 6.5, 6.10).
+WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), WU3 (2.1-2.3 + test 6.9), and WU4 (2.4, 3.1-3.3 + tests 6.5, 6.10) are done under this finalized plan. `sdd-apply` resumes at WU5 (wiring only, connecting WU3's consumer to WU4's filter/buffer/writer, + tests 6.1, 6.4).
 
 ## 1. Esquema y particionado
 - [x] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
@@ -81,12 +81,12 @@ WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), 
 - [x] 2.1 Adaptador entrante de Spring Integration suscrito a `fleet/+/vehicle/+/telemetry`
 - [x] 2.2 QoS por adaptador: telemetría 0, comandos 1, alertas 2 — solo el adaptador de telemetría (QoS 0) existe en este change; ningún change actual define un tópico de comandos, y el tópico de alertas (QoS 2) pertenece a `06-add-trips-eta-alerts`, así que no se crearon adaptadores de comandos/alertas aquí
 - [x] 2.3 Validación del payload; los mensajes malformados se descartan y se contabilizan, no tumban el consumidor
-- [ ] 2.4 Descarte de posiciones implausibles usando `Geo.isImplausible` de `geo-core`
+- [x] 2.4 Descarte de posiciones implausibles usando `Geo.isImplausible` de `geo-core` — **implausibility reference-position decision (WU4)**: `Geo.isImplausible` needs a "last known position" per vehicle to compare against, and design.md does not say where it comes from. `TelemetryImplausibilityFilter` keeps its own in-memory last-accepted-position-per-vehicle map (advanced monotonically by `recordedAt`, never regressed by a late resend) instead of reading `vehicle_state.location`: nothing in this work unit writes `vehicle_state` yet (that guard is WU6's `UPDATE vehicle_state ... WHERE recorded_at < ?`), so `vehicle_state.location` would stay NULL for every vehicle and the filter could never reject anything. This keeps the filter's own concern (is this jump physically possible) independent of, and without duplicating, WU6's later monotonic guard (has `vehicle_state` moved backward) — a different question over a different piece of state.
 
 ## 3. Escritura por lotes
-- [ ] 3.1 Buffer en memoria con descarga por tamaño (N filas) o por tiempo (T ms), lo que ocurra antes
-- [ ] 3.2 `JdbcTemplate.batchUpdate` con `ON CONFLICT (vehicle_id, recorded_at) DO NOTHING` — **no usar JPA para esto**
-- [ ] 3.3 Descarga del buffer en el apagado ordenado del contexto de Spring
+- [x] 3.1 Buffer en memoria con descarga por tamaño (N filas) o por tiempo (T ms), lo que ocurra antes
+- [x] 3.2 `JdbcTemplate.batchUpdate` con `ON CONFLICT (vehicle_id, recorded_at) DO NOTHING` — **no usar JPA para esto**
+- [x] 3.3 Descarga del buffer en el apagado ordenado del contexto de Spring — `TelemetryPositionBuffer implements SmartLifecycle`, chosen over a bare `@PreDestroy` because the buffer also owns a background scheduled flush task that must stop cleanly alongside the final flush
 
 ## 4. Estado actual tolerante al desorden
 - [ ] 4.1 `UPDATE vehicle_state ... WHERE recorded_at < ?` (guarda de monotonía)
@@ -102,12 +102,12 @@ WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), 
 - [ ] 6.2 Desorden: un mensaje antiguo tras uno reciente NO retrocede `vehicle_state`
 - [ ] 6.3 Desorden: el mensaje antiguo SÍ se persiste en `positions`
 - [ ] 6.4 Ráfaga de reenvío: 1.000 posiciones acumuladas se insertan sin duplicados
-- [ ] 6.5 Posición implausible descartada, no persistida
+- [x] 6.5 Posición implausible descartada, no persistida
 - [ ] 6.6 Desconexión abrupta del dispositivo → el broker publica el testamento → el vehículo queda offline
 - [ ] 6.7 Reconexión → el vehículo vuelve a online
 - [x] 6.8 El plan de ejecución de la consulta de histórico por vehículo y rango NO contiene recorrido secuencial sobre `positions`
 - [x] 6.9 Payload malformado no derriba el consumidor
-- [ ] 6.10 El apagado ordenado descarga el buffer pendiente
+- [x] 6.10 El apagado ordenado descarga el buffer pendiente
 
 ## Definición de terminado
 - [ ] El simulador emite desde 50 vehículos durante 10 minutos sin crecimiento monótono de memoria del proceso
