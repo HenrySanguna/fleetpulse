@@ -68,7 +68,9 @@ PR #1 targets `feat/telemetry-ingest` (the tracker branch, created off `main`); 
 
 </details>
 
-WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), WU3 (2.1-2.3 + test 6.9), WU4 (2.4, 3.1-3.3 + tests 6.5, 6.10), and **WU5 (wiring only + tests 6.1, 6.4)** are done under this finalized plan. WU5 has no numbered task of its own -- it wired `TelemetryMessageListener` (WU3) to call `TelemetryImplausibilityFilter.isPlausible` and, when plausible, `TelemetryPositionBuffer.add` (both WU4), so a validated MQTT message now flows all the way to `positions` through the real Spring beans instead of only being provable component-by-component; `TelemetryMqttConsumerTest` (WU3) was updated only to satisfy the listener's new constructor dependencies (a no-op `TelemetryPositionWriter`, no real database), and `TelemetryEndToEndIngestTest` proves idempotency (6.1) and the 1,000-row burst (6.4) against a real Mosquitto broker and a real PostGIS database wired together. `sdd-apply` resumes at WU6 (4.1 + tests 6.2, 6.3).
+WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), WU3 (2.1-2.3 + test 6.9), WU4 (2.4, 3.1-3.3 + tests 6.5, 6.10), **WU5 (wiring only + tests 6.1, 6.4)**, and **WU6 (4.1 + tests 6.2, 6.3)** are done under this finalized plan. WU5 has no numbered task of its own -- it wired `TelemetryMessageListener` (WU3) to call `TelemetryImplausibilityFilter.isPlausible` and, when plausible, `TelemetryPositionBuffer.add` (both WU4), so a validated MQTT message now flows all the way to `positions` through the real Spring beans instead of only being provable component-by-component; `TelemetryMqttConsumerTest` (WU3) was updated only to satisfy the listener's new constructor dependencies (a no-op `TelemetryPositionWriter`, no real database), and `TelemetryEndToEndIngestTest` proves idempotency (6.1) and the 1,000-row burst (6.4) against a real Mosquitto broker and a real PostGIS database wired together.
+
+**WU6 (4.1 + tests 6.2, 6.3) -- lazy-upsert-vs-pre-seeded resolution**: `vehicle_state` rows are **lazily upserted**, not pre-seeded. `JdbcTelemetryPositionWriter.writeBatch` (the same task-3.2 JdbcTemplate-only write path, no JPA) now also runs a single `INSERT INTO vehicle_state (vehicle_id, location, recorded_at) VALUES (...) ON CONFLICT (vehicle_id) DO UPDATE SET location = excluded.location, recorded_at = excluded.recorded_at WHERE vehicle_state.recorded_at IS NULL OR vehicle_state.recorded_at < excluded.recorded_at` for every message it persists to `positions`. This single statement both creates the row the first time a vehicle is ever seen (no separate seeding step, no pre-created rows) and enforces the monotonic guard (`WHERE recorded_at < ?`, expressed as the `ON CONFLICT ... WHERE` equivalent named in the task) on every later message. The `WHERE` clause treats a NULL stored `recorded_at` as "older than anything", so this also composes correctly with V5's migration comment that a future presence consumer (WU8, not yet built) might create a `vehicle_state` row from an LWT testament first, with `location`/`recorded_at` still NULL -- whichever side writes first, the other's upsert still behaves correctly. Only `location`/`recorded_at` are touched by this statement; `motion_state` is left alone for WU7's `MotionDetector` wiring and `online` remains exclusively owned by the presence consumer. Tested directly against `JdbcTelemetryPositionWriter` (`TelemetryVehicleStateGuardTest`, no MQTT broker involved) the same way `TelemetryBatchWriteTest` (WU4) proves 6.5/6.10 without one: the guard lives inside the same JdbcTemplate write path as task 3.2, so a broker adds nothing the tests need to prove, and this keeps WU6 provable without the extra dual-Testcontainers overhead `TelemetryEndToEndIngestTest` (WU5) already paid for 6.1/6.4. `sdd-apply` resumes at WU7 (4.2, `MotionDetector` streak state).
 
 ## 1. Esquema y particionado
 - [x] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
@@ -89,7 +91,7 @@ WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), 
 - [x] 3.3 Descarga del buffer en el apagado ordenado del contexto de Spring — `TelemetryPositionBuffer implements SmartLifecycle`, chosen over a bare `@PreDestroy` because the buffer also owns a background scheduled flush task that must stop cleanly alongside the final flush
 
 ## 4. Estado actual tolerante al desorden
-- [ ] 4.1 `UPDATE vehicle_state ... WHERE recorded_at < ?` (guarda de monotonía)
+- [x] 4.1 `UPDATE vehicle_state ... WHERE recorded_at < ?` (guarda de monotonía) — implementado como `INSERT ... ON CONFLICT (vehicle_id) DO UPDATE ... WHERE` equivalente dentro de `JdbcTelemetryPositionWriter.writeBatch`; `vehicle_state` se crea de forma perezosa (lazy upsert) la primera vez que se ve a un vehículo, no se pre-siembra — ver resolución detallada en la nota de WU6 más arriba
 - [ ] 4.2 Aplicar `MotionDetector` solo cuando el mensaje es más reciente que el último procesado
 
 ## 5. Presencia con LWT
@@ -99,8 +101,8 @@ WU1 (1.1, 1.2, 1.4), WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item), 
 
 ## 6. Tests (Testcontainers con PostGIS y Mosquitto reales)
 - [x] 6.1 Idempotencia: el mismo mensaje procesado dos veces produce una sola fila
-- [ ] 6.2 Desorden: un mensaje antiguo tras uno reciente NO retrocede `vehicle_state`
-- [ ] 6.3 Desorden: el mensaje antiguo SÍ se persiste en `positions`
+- [x] 6.2 Desorden: un mensaje antiguo tras uno reciente NO retrocede `vehicle_state`
+- [x] 6.3 Desorden: el mensaje antiguo SÍ se persiste en `positions`
 - [x] 6.4 Ráfaga de reenvío: 1.000 posiciones acumuladas se insertan sin duplicados
 - [x] 6.5 Posición implausible descartada, no persistida
 - [ ] 6.6 Desconexión abrupta del dispositivo → el broker publica el testamento → el vehículo queda offline
