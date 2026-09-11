@@ -73,12 +73,35 @@ public class MosquittoDynamicSecurityAdminClient {
         }
     }
 
+    // Idempotent for the same reason createRoleIfMissing is: a vehicle-scoped
+    // role (task 4.1) is shared across every credential ever issued for that
+    // vehicle (initial provisioning, plus each later rotation), so
+    // re-registering the exact same rule on an already-provisioned role must
+    // not fail. Confirmed empirically: dynsec rejects a duplicate ACL with
+    // "ACL with this topic already exists.", which also matches
+    // ALREADY_EXISTS_MARKER.
     public void addSubscribeAcl(String roleName, String topicFilter, boolean allow) {
-        execute("addRoleACL", Map.of(
+        addRoleAclIfMissing(roleName, "subscribePattern", topicFilter, allow);
+    }
+
+    // Task 4.1: device credentials publish telemetry/status on their own
+    // vehicle's topics -- publishClientSend is the dynsec ACL type for a
+    // client sending a message (confirmed via `mosquitto_ctrl dynsec help`),
+    // distinct from subscribe's Literal/Pattern split.
+    public void addPublishAcl(String roleName, String topicFilter, boolean allow) {
+        addRoleAclIfMissing(roleName, "publishClientSend", topicFilter, allow);
+    }
+
+    private void addRoleAclIfMissing(String roleName, String aclType, String topicFilter, boolean allow) {
+        JsonNode response = executeAllowingError("addRoleACL", Map.of(
             "rolename", roleName,
-            "acltype", "subscribePattern",
+            "acltype", aclType,
             "topic", topicFilter,
             "allow", allow));
+        String error = errorOf(response);
+        if (error != null && !error.toLowerCase(java.util.Locale.ROOT).contains(ALREADY_EXISTS_MARKER)) {
+            throw new MosquittoDynamicSecurityException("addRoleACL", error);
+        }
     }
 
     public void addClientRole(String username, String roleName) {

@@ -59,11 +59,24 @@ public class SecurityConfig {
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint((request, response, authException) ->
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
-            // /login is exempt because there is no prior authenticated
-            // session to source a CSRF token from; every other state-changing
-            // endpoint keeps Spring Security's default session-bound CSRF
-            // protection.
-            .csrf(csrf -> csrf.ignoringRequestMatchers("/login"))
+            // Task 4.1/4.2/4.3 discovery: this is a JSON API with no
+            // server-rendered view, so the plain session-bound CSRF
+            // protection (HttpSessionCsrfTokenRepository + a hidden-form
+            // token) has no page to embed the token in -- every mutation
+            // endpoint an authenticated dispatcher calls (device credential
+            // provisioning/revocation/rotation being the first ones this
+            // change actually exercises over HTTP) was silently rejected
+            // with 403 before this fix, since the client never had any way
+            // to learn the expected token. csrf().spa() is Spring Security's
+            // own built-in single-page-application recipe: it swaps in
+            // CookieCsrfTokenRepository (a JS-readable, non-HttpOnly
+            // `XSRF-TOKEN` cookie) and a request handler that resolves the
+            // token eagerly on every response and accepts it back verbatim
+            // via the `X-XSRF-TOKEN` header -- exactly the convention
+            // Angular's HttpClient implements out of the box. /login stays
+            // exempt because there is no prior response to have sourced that
+            // cookie from yet.
+            .csrf(csrf -> csrf.spa().ignoringRequestMatchers("/login"))
             // Task 2.5: must run after SecurityContextHolderFilter (which
             // restores the Authentication persisted in the session) and
             // before AuthorizationFilter (which decides access), so a
