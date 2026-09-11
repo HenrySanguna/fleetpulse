@@ -4,11 +4,17 @@ README.md
 api.base.service.ts
 api.module.ts
 api/api.ts
+api/dispatcherSessionController.service.ts
+api/dispatcherSessionController.serviceInterface.ts
+api/mqttCredentialsController.service.ts
+api/mqttCredentialsController.serviceInterface.ts
 configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/dispatcherSelfView.ts
 model/models.ts
+model/mqttCredentialsResponse.ts
 ng-package.json
 package.json
 param.ts
