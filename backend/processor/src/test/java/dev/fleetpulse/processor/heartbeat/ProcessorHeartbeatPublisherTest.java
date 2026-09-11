@@ -2,6 +2,7 @@ package dev.fleetpulse.processor.heartbeat;
 
 import dev.fleetpulse.processor.config.FleetpulseHeartbeatProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
+import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -10,14 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -28,15 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 class ProcessorHeartbeatPublisherTest {
 
-    private static final Path MOSQUITTO_CONF = Path
-        .of(System.getProperty("user.dir"), "..", "..", "docker", "mosquitto", "mosquitto.conf")
-        .normalize();
-
+    // 02-add-fleet-auth (tasks 5.1/5.2): the real mosquitto.conf now denies
+    // anonymous connections, so this test's broker must be bootstrapped the
+    // same way docker-compose.yml's mosquitto service is.
     @Container
-    static final GenericContainer<?> mosquitto = new GenericContainer<>(DockerImageName.parse("eclipse-mosquitto:2"))
-        .withCopyFileToContainer(MountableFile.forHostPath(MOSQUITTO_CONF), "/mosquitto/config/mosquitto.conf")
-        .withExposedPorts(1883)
-        .waitingFor(Wait.forListeningPort());
+    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer();
 
     private static final String HEARTBEAT_TOPIC = "fleetpulse/processor/heartbeat-test";
 
@@ -89,6 +82,8 @@ class ProcessorHeartbeatPublisherTest {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setConnectionTimeout(3);
         options.setAutomaticReconnect(false);
+        options.setUserName(SecuredMosquittoTestSupport.SERVICE_USERNAME);
+        options.setPassword(SecuredMosquittoTestSupport.SERVICE_PASSWORD.toCharArray());
         factory.setConnectionOptions(options);
         return factory;
     }
@@ -113,6 +108,8 @@ class ProcessorHeartbeatPublisherTest {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setConnectionTimeout(3);
         options.setAutomaticReconnect(false);
+        options.setUserName(SecuredMosquittoTestSupport.SERVICE_USERNAME);
+        options.setPassword(SecuredMosquittoTestSupport.SERVICE_PASSWORD.toCharArray());
         try {
             client.connect(options);
             client.subscribe(HEARTBEAT_TOPIC, 1);

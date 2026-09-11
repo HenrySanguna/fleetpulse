@@ -15,6 +15,18 @@ spring:
       # like every other table.
       initialize-schema: never
 
+server:
+  servlet:
+    session:
+      cookie:
+        # 02-add-fleet-auth, task 2.2: design.md requires the dispatcher
+        # session cookie to be HttpOnly/Secure/SameSite=Strict. Spring Boot's
+        # session autoconfiguration feeds these into Spring Session's cookie
+        # serializer, not just the raw servlet container's own cookie.
+        http-only: true
+        secure: true
+        same-site: strict
+
 management:
   endpoints:
     web:

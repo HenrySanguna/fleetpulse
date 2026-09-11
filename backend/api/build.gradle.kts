@@ -25,6 +25,15 @@ dependencies {
     // expire. Spring Boot 4.1 split session autoconfiguration into its own
     // module, which transitively brings org.springframework.session:spring-session-jdbc.
     implementation("org.springframework.boot:spring-boot-session-jdbc")
+    // Dispatcher form-based session auth (02-add-fleet-auth, tasks 2.1-2.5):
+    // password hashing, form login, per-request org resolution, and
+    // role-based method security all live behind this single starter.
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    // Argon2PasswordEncoder delegates to Bouncy Castle's Argon2 implementation,
+    // which is not brought in transitively by spring-security-crypto, and is
+    // not managed by Spring Boot's dependency-management BOM either -- pinned
+    // explicitly.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.79")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

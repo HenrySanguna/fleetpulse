@@ -7,3 +7,6 @@ spring:
 fleetpulse:
   mqtt:
     broker-url: tcp://localhost:1883
+    service:
+      username: internal-services
+      password: fleetpulse-dynsec-service

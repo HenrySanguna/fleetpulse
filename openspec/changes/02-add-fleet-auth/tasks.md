@@ -13,7 +13,19 @@ This forecast was produced by `sdd-apply` on first launch, not by `sdd-tasks` (t
 
 ### WU1 — Data model & migration: DONE
 
-Tasks 1.1–1.3 complete on branch `feat/fleet-auth-wu1-data-model` (off `feat/fleet-auth`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed). Resume point for the next `sdd-apply` run: WU2 (task 2.1), branch `feat/fleet-auth-wu2-session` off `feat/fleet-auth-wu1-data-model`.
+Tasks 1.1–1.3 complete on branch `feat/fleet-auth-wu1-data-model` (off `feat/fleet-auth`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed).
+
+### WU2 — Dispatcher session & authorization: DONE
+
+Tasks 2.1–2.5 and spec scenario 6.7 complete on branch `feat/fleet-auth-wu2-session` (off `feat/fleet-auth-wu1-data-model`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (TDD cycle table, test results, files changed, the DataSource-less-profile regression found and fixed along the way).
+
+### WU3 — Mosquitto backbone + browser ephemeral credentials: DONE
+
+Tasks 5.1–5.2, 3.1–3.3 and spec scenarios 6.1/6.4/6.6 complete on branch `feat/fleet-auth-wu3-mosquitto-browser-creds` (off `feat/fleet-auth-wu2-session`). See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (dynamic-security wire-protocol notes, files changed, test results).
+
+### WU4 — Device credentials: DONE (change complete, 25/25 tasks)
+
+Tasks 4.1–4.3, spec scenarios 6.2/6.3/6.5, and both "Definición de terminado" items complete on branch `feat/fleet-auth-wu4-device-creds` (off `feat/fleet-auth-wu3-mosquitto-browser-creds`), reusing WU3's `MosquittoDynamicSecurityAdminClient` unchanged. See Engram `sdd/02-add-fleet-auth/apply-progress` for full evidence (CSRF/SPA discovery, `LazyInitializationException` fix, test results). This is the last work unit of the `feature-branch-chain`; the tracker branch `feat/fleet-auth` now aggregates all 4 WUs toward `main`.
 
 ### Why this change is high risk for the 400-line budget
 
@@ -58,35 +70,36 @@ No implementation code has been written. `sdd-apply` will resume from task 1.1 o
 - [x] 1.3 Spring Session con JDBC para persistir sesiones de despachador
 
 ## 2. Sesión de despachador
-- [ ] 2.1 Spring Security con autenticación por formulario y hash de contraseña con Argon2 o BCrypt
-- [ ] 2.2 Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict`
-- [ ] 2.3 Resolución del `orgId` del usuario autenticado en cada petición
-- [ ] 2.4 Autorización por rol (`DISPATCHER`, `FLEET_ADMIN`) con anotaciones de método
-- [ ] 2.5 Invalidación de sesión al desactivar un usuario
+- [x] 2.1 Spring Security con autenticación por formulario y hash de contraseña con Argon2 o BCrypt
+- [x] 2.2 Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict`
+- [x] 2.3 Resolución del `orgId` del usuario autenticado en cada petición
+- [x] 2.4 Autorización por rol (`DISPATCHER`, `FLEET_ADMIN`) con anotaciones de método
+- [x] 2.5 Invalidación de sesión al desactivar un usuario
 
 ## 3. Credenciales MQTT de navegador
-- [ ] 3.1 `GET /api/mqtt/credentials`: genera credenciales efímeras ligadas a la sesión
-- [ ] 3.2 Registro de ACL de solo lectura sobre `fleet/{orgId}/#`
-- [ ] 3.3 Tarea `@Scheduled` que purga credenciales expiradas
+- [x] 3.1 `GET /api/mqtt/credentials`: genera credenciales efímeras ligadas a la sesión
+- [x] 3.2 Registro de ACL de solo lectura sobre `fleet/{orgId}/#`
+- [x] 3.3 Tarea `@Scheduled` que purga credenciales expiradas
 
 ## 4. Credenciales de dispositivo
-- [ ] 4.1 Alta de dispositivo con ACL acotada a su propio vehículo
-- [ ] 4.2 Revocación: elimina credencial y fuerza desconexión de la sesión activa en el broker
-- [ ] 4.3 Rotación de credencial sin dar de baja el dispositivo
+- [x] 4.1 Alta de dispositivo con ACL acotada a su propio vehículo
+- [x] 4.2 Revocación: elimina credencial y fuerza desconexión de la sesión activa en el broker
+- [x] 4.3 Rotación de credencial sin dar de baja el dispositivo
 
 ## 5. Integración con Mosquitto
-- [ ] 5.1 Backend de autenticación y ACL de Mosquitto apoyado en el almacén de credenciales
-- [ ] 5.2 Configuración que prohíbe conexiones anónimas en **ambos** listeners (TCP y WebSocket)
+- [x] 5.1 Backend de autenticación y ACL de Mosquitto apoyado en el almacén de credenciales
+- [x] 5.2 Configuración que prohíbe conexiones anónimas en **ambos** listeners (TCP y WebSocket)
 
 ## 6. Tests (Testcontainers con Mosquitto real)
-- [ ] 6.1 Un despachador de la organización A NO puede suscribirse a tópicos de la organización B
-- [ ] 6.2 Un dispositivo NO puede publicar en el tópico de telemetría de otro vehículo
-- [ ] 6.3 Un dispositivo NO puede suscribirse al tópico de alertas de su organización
-- [ ] 6.4 Credenciales de navegador expiradas no permiten conexión
-- [ ] 6.5 Revocar un dispositivo corta su conexión activa
-- [ ] 6.6 Conexión anónima rechazada en ambos listeners
-- [ ] 6.7 Desactivar un despachador invalida su sesión HTTP en la petición siguiente
+- [x] 6.1 Un despachador de la organización A NO puede suscribirse a tópicos de la organización B
+- [x] 6.2 Un dispositivo NO puede publicar en el tópico de telemetría de otro vehículo
+- [x] 6.3 Un dispositivo NO puede suscribirse al tópico de alertas de su organización
+- [x] 6.4 Credenciales de navegador expiradas no permiten conexión
+- [x] 6.5 Revocar un dispositivo corta su conexión activa
+- [x] 6.6 Conexión anónima rechazada en ambos listeners
+- [x] 6.7 Desactivar un despachador invalida su sesión HTTP en la petición siguiente
+- [x] 6.8 Renovación de credenciales MQTT tras revocar la sesión del despachador (`GET /api/mqtt/credentials` devuelve 401 tras desactivar) — *added during sdd-verify remediation: this scenario existed in specs/fleet-auth/spec.md but was never allocated a task in this section, so it predated WU4 and stayed untested until `MqttCredentialsAfterDispatcherDeactivationTest` closed the gap.*
 
 ## Definición de terminado
-- [ ] Ningún test consigue una suscripción cruzada entre organizaciones
-- [ ] El broker rechaza conexiones anónimas también en el listener de WebSocket
+- [x] Ningún test consigue una suscripción cruzada entre organizaciones
+- [x] El broker rechaza conexiones anónimas también en el listener de WebSocket
