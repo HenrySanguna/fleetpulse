@@ -130,4 +130,23 @@ class FleetAuthEntityPersistenceTest {
         assertThat(reloaded.getDevice()).isNull();
         assertThat(reloaded.getExpiresAt()).isEqualTo(expiresAt);
     }
+
+    // Task 4.2/4.3: revocation and rotation both need to find a device's
+    // CURRENT active credential without picking up an older, already-revoked
+    // one left behind for audit purposes (MqttCredential.revoke() sets
+    // revokedAt but never deletes the row).
+    @Test
+    void findsOnlyTheActiveNonRevokedCredentialForADevice() {
+        Organization acme = organizations.save(new Organization("Acme Active Cred Org"));
+        Vehicle truck = vehicles.save(new Vehicle(acme, "Truck-99"));
+        Device tracker = devices.save(new Device(truck, "device-serial-099"));
+
+        MqttCredential revoked = credentials.save(MqttCredential.forDevice("device-099-old", "hashed-old", tracker));
+        revoked.revoke();
+        credentials.save(revoked);
+        MqttCredential active = credentials.save(MqttCredential.forDevice("device-099-new", "hashed-new", tracker));
+
+        MqttCredential found = credentials.findByDeviceAndRevokedAtIsNull(tracker).orElseThrow();
+        assertThat(found.getId()).isEqualTo(active.getId());
+    }
 }

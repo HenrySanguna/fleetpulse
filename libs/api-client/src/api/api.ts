@@ -1,4 +1,10 @@
+export * from './deviceCredentialController.service';
+import { DeviceCredentialControllerService } from './deviceCredentialController.service';
+export * from './deviceCredentialController.serviceInterface';
 export * from './dispatcherSessionController.service';
 import { DispatcherSessionControllerService } from './dispatcherSessionController.service';
 export * from './dispatcherSessionController.serviceInterface';
-export const APIS = [DispatcherSessionControllerService];
+export * from './mqttCredentialsController.service';
+import { MqttCredentialsControllerService } from './mqttCredentialsController.service';
+export * from './mqttCredentialsController.serviceInterface';
+export const APIS = [DeviceCredentialControllerService, DispatcherSessionControllerService, MqttCredentialsControllerService];

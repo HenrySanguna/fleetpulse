@@ -25,13 +25,27 @@ services:
 
   mosquitto:
     image: eclipse-mosquitto:2
+    environment:
+      # Dev-only fixed credentials, same posture as postgis' fleetpulse/fleetpulse
+      # above -- 02-add-fleet-auth, tasks 5.1/5.2. MOSQUITTO_DYNSEC_ADMIN_*
+      # bootstraps the plugin's first admin (used only by the backend's
+      # MosquittoDynamicSecurityAdminClient); MOSQUITTO_DYNSEC_SERVICE_* is the
+      # broad-access identity this repo's own health checks and processor
+      # heartbeat authenticate as, since the admin identity itself cannot
+      # publish/subscribe to ordinary topics. See bootstrap-and-run.sh.
+      MOSQUITTO_DYNSEC_ADMIN_USERNAME: admin
+      MOSQUITTO_DYNSEC_ADMIN_PASSWORD: fleetpulse-dynsec-admin
+      MOSQUITTO_DYNSEC_SERVICE_USERNAME: internal-services
+      MOSQUITTO_DYNSEC_SERVICE_PASSWORD: fleetpulse-dynsec-service
     ports:
       - "1883:1883"
       - "9001:9001"
     volumes:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/bootstrap-and-run.sh:/mosquitto/bootstrap-and-run.sh:ro
+    command: ["sh", "/mosquitto/bootstrap-and-run.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_sub -u \"$$MOSQUITTO_DYNSEC_SERVICE_USERNAME\" -P \"$$MOSQUITTO_DYNSEC_SERVICE_PASSWORD\" -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -1,5 +1,6 @@
 package dev.fleetpulse.api.health;
 
+import dev.fleetpulse.api.mqtt.SecuredMosquittoTestSupport;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -13,13 +14,11 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.ResponseEntity;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,10 +41,6 @@ class ActuatorHealthEndpointTest {
         .of(System.getProperty("user.dir"), "..", "..", "docker", "postgis-partman", "Dockerfile")
         .normalize();
 
-    private static final Path MOSQUITTO_CONF = Path
-        .of(System.getProperty("user.dir"), "..", "..", "docker", "mosquitto", "mosquitto.conf")
-        .normalize();
-
     @Container
     static final PostgreSQLContainer postgis = new PostgreSQLContainer(
         DockerImageName
@@ -57,11 +52,11 @@ class ActuatorHealthEndpointTest {
             .asCompatibleSubstituteFor("postgres")
     );
 
+    // 02-add-fleet-auth (tasks 5.1/5.2): the real mosquitto.conf now denies
+    // anonymous connections, so this test's broker must be bootstrapped the
+    // same way docker-compose.yml's mosquitto service is.
     @Container
-    static final GenericContainer<?> mosquitto = new GenericContainer<>(DockerImageName.parse("eclipse-mosquitto:2"))
-        .withCopyFileToContainer(MountableFile.forHostPath(MOSQUITTO_CONF), "/mosquitto/config/mosquitto.conf")
-        .withExposedPorts(1883)
-        .waitingFor(Wait.forListeningPort());
+    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer();
 
     @org.springframework.test.context.DynamicPropertySource
     static void backingServices(org.springframework.test.context.DynamicPropertyRegistry registry) {
@@ -72,6 +67,8 @@ class ActuatorHealthEndpointTest {
             "fleetpulse.mqtt.broker-url",
             () -> "tcp://" + mosquitto.getHost() + ":" + mosquitto.getMappedPort(1883)
         );
+        registry.add("fleetpulse.mqtt.service.username", () -> SecuredMosquittoTestSupport.SERVICE_USERNAME);
+        registry.add("fleetpulse.mqtt.service.password", () -> SecuredMosquittoTestSupport.SERVICE_PASSWORD);
     }
 
     @LocalServerPort
@@ -110,6 +107,8 @@ class ActuatorHealthEndpointTest {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setConnectionTimeout(3);
         options.setAutomaticReconnect(false);
+        options.setUserName(SecuredMosquittoTestSupport.SERVICE_USERNAME);
+        options.setPassword(SecuredMosquittoTestSupport.SERVICE_PASSWORD.toCharArray());
         try {
             client.connect(options);
             MqttMessage message = new MqttMessage(Instant.now().toString().getBytes(StandardCharsets.UTF_8));
