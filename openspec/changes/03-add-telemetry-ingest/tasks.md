@@ -68,14 +68,14 @@ PR #1 targets `feat/telemetry-ingest` (the tracker branch, created off `main`); 
 
 </details>
 
-No implementation code has been written yet. `sdd-apply` resumes from task 1.1 (WU1) under this finalized plan.
+WU1 (1.1, 1.2, 1.4) and WU2 (1.3, 1.5 + test 6.8 + the partitions-ahead DoD item) are done under this finalized plan. `sdd-apply` resumes at WU3 (tasks 2.1-2.3 + test 6.9).
 
 ## 1. Esquema y particionado
 - [x] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
 - [x] 1.2 Índice BRIN sobre `recorded_at`, GiST sobre `location`
-- [ ] 1.3 `pg_partman` configurado con particiones semanales creadas por adelantado y retención configurable
+- [x] 1.3 `pg_partman` configurado con particiones semanales creadas por adelantado y retención configurable
 - [x] 1.4 Tabla `vehicle_state` (última posición, estado de movimiento, online, `recorded_at`)
-- [ ] 1.5 Tarea `@Scheduled` que invoca `partman.run_maintenance_proc()` explícitamente
+- [x] 1.5 Tarea `@Scheduled` que invoca `partman.run_maintenance_proc()` explícitamente
 
 ## 2. Consumo MQTT
 - [ ] 2.1 Adaptador entrante de Spring Integration suscrito a `fleet/+/vehicle/+/telemetry`
@@ -105,11 +105,11 @@ No implementation code has been written yet. `sdd-apply` resumes from task 1.1 (
 - [ ] 6.5 Posición implausible descartada, no persistida
 - [ ] 6.6 Desconexión abrupta del dispositivo → el broker publica el testamento → el vehículo queda offline
 - [ ] 6.7 Reconexión → el vehículo vuelve a online
-- [ ] 6.8 El plan de ejecución de la consulta de histórico por vehículo y rango NO contiene recorrido secuencial sobre `positions`
+- [x] 6.8 El plan de ejecución de la consulta de histórico por vehículo y rango NO contiene recorrido secuencial sobre `positions`
 - [ ] 6.9 Payload malformado no derriba el consumidor
 - [ ] 6.10 El apagado ordenado descarga el buffer pendiente
 
 ## Definición de terminado
 - [ ] El simulador emite desde 50 vehículos durante 10 minutos sin crecimiento monótono de memoria del proceso
 - [ ] Cortar el simulador de golpe marca esos vehículos como offline sin intervención
-- [ ] Las particiones de la semana siguiente existen antes de que empiece esa semana
+- [x] Las particiones de la semana siguiente existen antes de que empiece esa semana
