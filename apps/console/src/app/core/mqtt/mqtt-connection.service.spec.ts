@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpClient } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { MqttCredentialsControllerService } from '@fleetpulse/api-client';
 import { MqttConnectionService } from './mqtt-connection.service';
@@ -63,16 +64,29 @@ const CREDENTIALS = {
 };
 
 describe('MqttConnectionService', () => {
-  let credentialsApi: { credentials: ReturnType<typeof vi.fn> };
+  // WU6 gap (see core/http/api-client-json-get.ts): MqttConnectionService no
+  // longer calls MqttCredentialsControllerService.credentials() directly --
+  // that generated method silently requests `responseType: 'blob'` -- it now
+  // calls plain `HttpClient.get()` via getJson(), reading only
+  // `credentialsApi.configuration` for basePath/withCredentials. Mocking
+  // HttpClient.get() directly keeps every assertion below unchanged; only
+  // the mock's own identity moved.
+  let httpClient: { get: ReturnType<typeof vi.fn> };
   let service: MqttConnectionService;
 
   beforeEach(() => {
     mockConnect.mockClear();
     fakeClients.length = 0;
-    credentialsApi = { credentials: vi.fn(() => of(CREDENTIALS)) };
+    httpClient = { get: vi.fn(() => of(CREDENTIALS)) };
 
     TestBed.configureTestingModule({
-      providers: [{ provide: MqttCredentialsControllerService, useValue: credentialsApi }],
+      providers: [
+        { provide: HttpClient, useValue: httpClient },
+        {
+          provide: MqttCredentialsControllerService,
+          useValue: { configuration: { basePath: 'http://localhost:8099', withCredentials: true } },
+        },
+      ],
     });
     service = TestBed.inject(MqttConnectionService);
   });
@@ -85,7 +99,7 @@ describe('MqttConnectionService', () => {
   it('fetches credentials and connects over WebSocket with a disabled built-in reconnect period', () => {
     service.connect(ORG_ID);
 
-    expect(credentialsApi.credentials).toHaveBeenCalledTimes(1);
+    expect(httpClient.get).toHaveBeenCalledTimes(1);
     expect(mockConnect).toHaveBeenCalledWith(CREDENTIALS.wsUrl, {
       username: CREDENTIALS.username,
       password: CREDENTIALS.password,
@@ -124,13 +138,13 @@ describe('MqttConnectionService', () => {
     vi.useFakeTimers();
     service.connect(ORG_ID);
     fakeClients[0].fire('connect');
-    expect(credentialsApi.credentials).toHaveBeenCalledTimes(1);
+    expect(httpClient.get).toHaveBeenCalledTimes(1);
 
     // expiresAt is 5 minutes out; the 30s renewal margin fires at ~4m30s.
     vi.advanceTimersByTime(4 * 60_000 + 30_000);
 
     expect(fakeClients[0].endCalls).toEqual([true]);
-    expect(credentialsApi.credentials).toHaveBeenCalledTimes(2);
+    expect(httpClient.get).toHaveBeenCalledTimes(2);
     expect(mockConnect).toHaveBeenCalledTimes(2);
   });
 
@@ -175,13 +189,13 @@ describe('MqttConnectionService', () => {
 
   it('retries with backoff when the credentials request itself fails', () => {
     vi.useFakeTimers();
-    credentialsApi.credentials.mockReturnValueOnce(throwError(() => new Error('network down')));
+    httpClient.get.mockReturnValueOnce(throwError(() => new Error('network down')));
 
     service.connect(ORG_ID);
     expect(mockConnect).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1_000);
-    expect(credentialsApi.credentials).toHaveBeenCalledTimes(2);
+    expect(httpClient.get).toHaveBeenCalledTimes(2);
     expect(mockConnect).toHaveBeenCalledTimes(1);
   });
 

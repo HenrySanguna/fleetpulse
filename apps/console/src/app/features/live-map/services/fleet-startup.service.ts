@@ -1,7 +1,14 @@
 import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { Observable, Subscription, filter, switchMap } from 'rxjs';
-import { DispatcherSessionControllerService, FleetStateControllerService } from '@fleetpulse/api-client';
+import {
+  DispatcherSessionControllerService,
+  FleetStateControllerService,
+  type DispatcherSelfView,
+  type FleetStateResponse,
+} from '@fleetpulse/api-client';
+import { getJson } from '../../../core/http/api-client-json-get';
 import { MqttConnectionService } from '../../../core/mqtt/mqtt-connection.service';
 import type { MqttInboundMessage } from '../../../core/mqtt/mqtt-connection.models';
 import { FleetStore } from './fleet.store';
@@ -29,6 +36,7 @@ import { mapInboundMessage } from './fleet-message.mapper';
 // exactly the desired "stop trusting the old state, start over" behavior.
 @Injectable({ providedIn: 'root' })
 export class FleetStartupService {
+  private readonly http = inject(HttpClient);
   private readonly mqttConnectionService = inject(MqttConnectionService);
   private readonly dispatcherSessionApi = inject(DispatcherSessionControllerService);
   private readonly fleetStateApi = inject(FleetStateControllerService);
@@ -52,7 +60,11 @@ export class FleetStartupService {
 
     this.cycleSubscription = this.connectedStatus$.pipe(switchMap(() => this.runStartupCycle())).subscribe();
 
-    this.dispatcherSessionApi.me().subscribe({
+    // getJson(), not this.dispatcherSessionApi.me() -- see
+    // core/http/api-client-json-get.ts's doc comment for the
+    // responseType:'blob' bug this works around; `dispatcherSessionApi` is
+    // kept injected purely to read its already-pinned `configuration`.
+    getJson<DispatcherSelfView>(this.http, this.dispatcherSessionApi.configuration, '/api/dispatchers/me').subscribe({
       next: (dispatcher) => {
         if (dispatcher.organizationId) {
           this.mqttConnectionService.connect(dispatcher.organizationId);
@@ -95,7 +107,13 @@ export class FleetStartupService {
         }
       });
 
-      const snapshotSubscription = this.fleetStateApi.state().subscribe({
+      // getJson(), not this.fleetStateApi.state() -- same responseType:'blob'
+      // gap the two call sites above already work around.
+      const snapshotSubscription = getJson<FleetStateResponse>(
+        this.http,
+        this.fleetStateApi.configuration,
+        '/api/fleet/state',
+      ).subscribe({
         next: (snapshot) => {
           this.fleetStore.applySnapshot(snapshot);
           for (const buffered of buffer) {

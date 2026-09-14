@@ -22,9 +22,17 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
-  /* Run your local dev server before starting the tests */
+  /* Serve the production build, not `console:serve`'s dev server: WU6
+   * discovered `ng serve`'s Vite-based dependency prebundling fails to
+   * populate maplibre-gl's separate worker chunk under dev mode (unrelated
+   * to this change; `maplibre-gl-worker.mjs` 404s there, which silently
+   * breaks the vehicle symbol layer's GeoJSON tessellation). The production
+   * build does not hit this at all (esbuild bundles the worker inline), and
+   * testing the actual shipped artifact is the more correct E2E target
+   * regardless. `serve-static`'s own `buildTarget: "console:build"`
+   * (project.json) already builds production first. */
   webServer: {
-    command: 'npx nx run console:serve',
+    command: 'npx nx run console:serve-static',
     url: 'http://localhost:4200',
     reuseExistingServer: true,
     cwd: workspaceRoot,

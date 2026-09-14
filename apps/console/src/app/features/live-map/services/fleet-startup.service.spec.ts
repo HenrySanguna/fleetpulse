@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Subject, of } from 'rxjs';
 import type { FleetStateResponse } from '@fleetpulse/api-client';
@@ -45,11 +46,32 @@ describe('FleetStartupService', () => {
     mqtt = new FakeMqttConnectionService();
     snapshot$ = new Subject<FleetStateResponse>();
 
+    // WU6 gap (see core/http/api-client-json-get.ts): FleetStartupService no
+    // longer calls DispatcherSessionControllerService.me() /
+    // FleetStateControllerService.state() directly -- both generated
+    // methods silently request `responseType: 'blob'` -- it now calls plain
+    // `HttpClient.get()` via getJson() for both, reading only each
+    // injected service's `.configuration` for basePath/withCredentials.
+    // One shared `HttpClient.get` mock routes by URL suffix so this keeps
+    // exactly the same Subject-controlled snapshot timing the tests below
+    // already rely on.
+    const httpGet = vi.fn((url: string) => {
+      if (url.endsWith('/api/dispatchers/me')) {
+        return of({ organizationId: 'org-1' });
+      }
+      if (url.endsWith('/api/fleet/state')) {
+        return snapshot$;
+      }
+      throw new Error(`Unexpected getJson URL in test: ${url}`);
+    });
+    const fakeConfiguration = { configuration: { basePath: 'http://localhost:8099', withCredentials: true } };
+
     TestBed.configureTestingModule({
       providers: [
         { provide: MqttConnectionService, useValue: mqtt },
-        { provide: DispatcherSessionControllerService, useValue: { me: () => of({ organizationId: 'org-1' }) } },
-        { provide: FleetStateControllerService, useValue: { state: () => snapshot$ } },
+        { provide: HttpClient, useValue: { get: httpGet } },
+        { provide: DispatcherSessionControllerService, useValue: fakeConfiguration },
+        { provide: FleetStateControllerService, useValue: fakeConfiguration },
       ],
     });
 

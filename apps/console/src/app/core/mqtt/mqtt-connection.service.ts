@@ -1,7 +1,9 @@
 import { Injectable, OnDestroy, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Subject } from 'rxjs';
 import mqtt, { type MqttClient } from 'mqtt';
 import { MqttCredentialsControllerService, type MqttCredentialsResponse } from '@fleetpulse/api-client';
+import { getJson } from '../http/api-client-json-get';
 import type { MqttConnectionStatus, MqttInboundMessage } from './mqtt-connection.models';
 
 const VEHICLE_TOPIC_SUFFIXES = ['telemetry', 'status'] as const;
@@ -31,6 +33,7 @@ interface ResolvedMqttCredentials {
 // disabled (0) in favor of the manual backoff below.
 @Injectable({ providedIn: 'root' })
 export class MqttConnectionService implements OnDestroy {
+  private readonly http = inject(HttpClient);
   private readonly credentialsApi = inject(MqttCredentialsControllerService);
 
   private client: MqttClient | undefined;
@@ -73,7 +76,11 @@ export class MqttConnectionService implements OnDestroy {
     }
     this.statusSignal.set(this.reconnectAttempt === 0 ? 'connecting' : 'reconnecting');
 
-    this.credentialsApi.credentials().subscribe({
+    // getJson(), not this.credentialsApi.credentials() -- see
+    // core/http/api-client-json-get.ts's doc comment for the
+    // responseType:'blob' bug this works around; `credentialsApi` is kept
+    // injected purely to read its already-pinned `configuration`.
+    getJson<MqttCredentialsResponse>(this.http, this.credentialsApi.configuration, '/api/mqtt/credentials').subscribe({
       next: (credentials) => this.handleCredentials(credentials),
       error: () => this.scheduleReconnect(),
     });
