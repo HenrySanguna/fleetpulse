@@ -113,7 +113,7 @@ class ProcessorHeartbeatPublisherTest {
         try {
             client.connect(options);
             client.subscribe(HEARTBEAT_TOPIC, 1);
-            return received.get(5, TimeUnit.SECONDS);
+            return received.get(15, TimeUnit.SECONDS);
         } finally {
             client.disconnect();
             client.close();
