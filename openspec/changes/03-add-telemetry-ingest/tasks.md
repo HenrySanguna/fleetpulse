@@ -71,10 +71,10 @@ PR #1 targets `feat/telemetry-ingest` (the tracker branch, created off `main`); 
 No implementation code has been written yet. `sdd-apply` resumes from task 1.1 (WU1) under this finalized plan.
 
 ## 1. Esquema y particionado
-- [ ] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
-- [ ] 1.2 Índice BRIN sobre `recorded_at`, GiST sobre `location`
+- [x] 1.1 Migración Flyway: tabla `positions` particionada por rango sobre `recorded_at`, PK `(vehicle_id, recorded_at)`
+- [x] 1.2 Índice BRIN sobre `recorded_at`, GiST sobre `location`
 - [ ] 1.3 `pg_partman` configurado con particiones semanales creadas por adelantado y retención configurable
-- [ ] 1.4 Tabla `vehicle_state` (última posición, estado de movimiento, online, `recorded_at`)
+- [x] 1.4 Tabla `vehicle_state` (última posición, estado de movimiento, online, `recorded_at`)
 - [ ] 1.5 Tarea `@Scheduled` que invoca `partman.run_maintenance_proc()` explícitamente
 
 ## 2. Consumo MQTT
