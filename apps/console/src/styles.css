@@ -1,1 +1,5 @@
 /* You can add global styles to this file, and also import other style files */
+
+/* Task 4.1: MapLibre GL's own stylesheet (canvas sizing, controls, popups).
+   Required for the map to render/size correctly -- not optional chrome. */
+@import 'maplibre-gl/dist/maplibre-gl.css';

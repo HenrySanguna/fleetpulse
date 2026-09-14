@@ -134,4 +134,15 @@ describe('FleetStore', () => {
       expect(store.visibleVehicles().map((v) => v.vehicleId)).toEqual(['v3']);
     });
   });
+
+  // Task 3.3 (shared selection signal for the track httpResource)
+  it('selectVehicle sets and clears the selected vehicle id', () => {
+    expect(store.selectedVehicleId()).toBeUndefined();
+
+    store.selectVehicle('v1');
+    expect(store.selectedVehicleId()).toBe('v1');
+
+    store.selectVehicle(undefined);
+    expect(store.selectedVehicleId()).toBeUndefined();
+  });
 });
