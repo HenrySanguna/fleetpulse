@@ -8,11 +8,13 @@ import type { VehicleUpdate } from './fleet-message.mapper';
 interface FleetStoreState {
   readonly vehicles: ReadonlyMap<string, VehicleState>;
   readonly filters: FleetFilters;
+  readonly selectedVehicleId: string | undefined;
 }
 
 const INITIAL_STATE: FleetStoreState = {
   vehicles: new Map(),
   filters: INITIAL_FLEET_FILTERS,
+  selectedVehicleId: undefined,
 };
 
 // Task 3.1: stream state, fed by FleetStartupService's snapshot+buffer+live
@@ -61,6 +63,17 @@ export const FleetStore = signalStore(
 
     setFilters(filters: Partial<FleetFilters>): void {
       patchState(store, (state) => ({ filters: { ...state.filters, ...filters } }));
+    },
+
+    // Task 3.3's design gap: the historical track's httpResource needs a
+    // reactive "which vehicle" signal (design.md's own `selectedVehicleId()`
+    // example), and the map's marker click-to-select (task 4.2) is the first
+    // producer of that signal before WU5's side panel exists. Kept on
+    // FleetStore rather than a new store so there is exactly one selection
+    // signal for the map, the track resource, and (WU5) the side panel to
+    // share -- never three copies that could disagree.
+    selectVehicle(vehicleId: string | undefined): void {
+      patchState(store, { selectedVehicleId: vehicleId });
     },
   })),
 );
