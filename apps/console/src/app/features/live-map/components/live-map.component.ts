@@ -39,6 +39,22 @@ const EMPTY_TRACK_COLLECTION: FeatureCollection<LineString, Record<string, never
   features: [],
 };
 
+// Test 6.5's E2E hook only. `isDevMode()` was tried first but Angular's
+// build-mode stripping isn't the relevant axis here -- apps/console-e2e
+// targets the production bundle specifically (its own dev-server run hits
+// an unrelated Vite dependency-prebundling gap for maplibre-gl's worker
+// chunk, `maplibre-gl-worker.mjs` 404s under `ng serve`, tracked separately
+// from this WU's scope), so a build-mode flag would never be true where the
+// E2E suite actually runs. `apps/console-e2e/src/support/live-map-stubs.ts`
+// sets this via `page.addInitScript()` BEFORE navigation, so it is present
+// only for an explicit, opted-in E2E run and never for a real deployment,
+// regardless of build configuration -- MapLibre's own public
+// `queryRenderedFeatures` API is what the E2E test reads through this
+// reference, not any private internal.
+function isE2eHarness(): boolean {
+  return (window as unknown as { __fleetpulseE2E?: boolean }).__fleetpulseE2E === true;
+}
+
 // Tasks 4.1-4.6: MapLibre GL wiring. Deliberately thin -- every non-trivial
 // decision (interpolation math, GeoJSON/styling-property derivation, track
 // line shape) lives in `services/`, this component only calls MapLibre's
@@ -126,6 +142,10 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       this.addTrackLayer(map);
       this.styleLoaded.set(true);
 
+      if (isE2eHarness()) {
+        (window as unknown as { __fleetpulseLiveMap?: MapLibreMap }).__fleetpulseLiveMap = map;
+      }
+
       map.on('click', VEHICLES_LAYER_ID, (event: MapLayerMouseEvent) => {
         const vehicleId = event.features?.[0]?.properties?.['vehicleId'];
         if (typeof vehicleId === 'string') {
@@ -147,6 +167,9 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     this.map?.remove();
     this.map = undefined;
     this.styleLoaded.set(false);
+    if (isE2eHarness()) {
+      delete (window as unknown as { __fleetpulseLiveMap?: MapLibreMap }).__fleetpulseLiveMap;
+    }
   }
 
   // Task 4.4: the rAF loop itself -- the one piece that genuinely has to
