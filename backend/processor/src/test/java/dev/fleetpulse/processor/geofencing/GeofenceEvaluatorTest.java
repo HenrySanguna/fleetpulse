@@ -1,5 +1,6 @@
 package dev.fleetpulse.processor.geofencing;
 
+import dev.fleetpulse.geocore.FenceMembershipState;
 import dev.fleetpulse.geocore.FenceTransition;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,8 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -159,6 +162,146 @@ class GeofenceEvaluatorTest {
                     tuple(geofenceB, FenceTransition.ENTERED)
                 );
         }
+    }
+
+    // WU4: loadActiveMembershipStates() is deliberately broader than the
+    // "is_inside = true" set evaluate() uses internally -- it must also
+    // surface a row that has a pending transition in progress but is not
+    // yet confirmed inside, or GeofenceRuleDispatcher could never discard
+    // that pending on a reverting reading (task 3.2).
+    @Test
+    void loadActiveMembershipStatesReturnsConfirmedInsideRows() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Membership Org 1");
+            UUID vehicleId = insertVehicle(connection, organizationId, "Truck-Membership-1");
+            UUID geofenceId = insertSquareGeofence(connection, organizationId, "Depot", -74.07, 4.71, 0.01, "on_enter", true);
+            Instant since = Instant.now().minusSeconds(600);
+            insertVehicleFenceState(connection, vehicleId, geofenceId, true, since);
+
+            Map<UUID, GeofenceMembershipRecord> states = evaluator.loadActiveMembershipStates(vehicleId);
+
+            assertThat(states).containsOnlyKeys(geofenceId);
+            FenceMembershipState state = states.get(geofenceId).state();
+            assertThat(state.inside()).isTrue();
+            assertThat(state.since()).isCloseTo(since, org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MILLIS));
+            assertThat(state.pendingSince()).isNull();
+            assertThat(state.pendingReadingCount()).isZero();
+            assertThat(states.get(geofenceId).dwellAlerted()).isFalse();
+        }
+    }
+
+    @Test
+    void loadActiveMembershipStatesReturnsPendingRowsEvenWhenNotYetConfirmedInside() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Membership Org 2");
+            UUID vehicleId = insertVehicle(connection, organizationId, "Truck-Membership-2");
+            UUID geofenceId = insertSquareGeofence(connection, organizationId, "Depot", -74.07, 4.71, 0.01, "on_enter", true);
+            Instant since = Instant.now().minusSeconds(600);
+            Instant pendingSince = Instant.now().minusSeconds(20);
+            insertVehicleFenceStatePending(connection, vehicleId, geofenceId, false, since, pendingSince, 2);
+
+            Map<UUID, GeofenceMembershipRecord> states = evaluator.loadActiveMembershipStates(vehicleId);
+
+            assertThat(states).containsOnlyKeys(geofenceId);
+            FenceMembershipState state = states.get(geofenceId).state();
+            assertThat(state.inside()).isFalse();
+            assertThat(state.pendingSince())
+                .isCloseTo(pendingSince, org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MILLIS));
+            assertThat(state.pendingReadingCount()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void loadActiveMembershipStatesOmitsRowsThatAreNeitherInsideNorPending() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Membership Org 3");
+            UUID vehicleId = insertVehicle(connection, organizationId, "Truck-Membership-3");
+            UUID geofenceId = insertSquareGeofence(connection, organizationId, "Depot", -74.07, 4.71, 0.01, "on_exit", true);
+            insertVehicleFenceState(connection, vehicleId, geofenceId, false, Instant.now().minusSeconds(600));
+
+            Map<UUID, GeofenceMembershipRecord> states = evaluator.loadActiveMembershipStates(vehicleId);
+
+            assertThat(states).isEmpty();
+        }
+    }
+
+    // WU4 (task 3.3's asymmetric exit margin): a point ~11m past the strict
+    // boundary's edge, well within a generous buffer but well outside a tiny
+    // one.
+    @Test
+    void bufferedContainmentAmongIncludesAGeofenceWhenThePointIsWithinTheBufferButOutsideTheStrictBoundary() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Buffer Org 1");
+            UUID geofenceId = insertSquareGeofence(connection, organizationId, "Depot", -74.07, 4.71, 0.0005, "on_exit", true);
+            double justOutsideLon = -74.07 + 0.0005 + 0.0001;
+
+            Set<UUID> covered = evaluator.bufferedContainmentAmong(Set.of(geofenceId), 4.71, justOutsideLon, 50.0);
+
+            assertThat(covered).containsExactly(geofenceId);
+        }
+    }
+
+    @Test
+    void bufferedContainmentAmongExcludesAGeofenceWhenThePointIsBeyondTheBufferDistance() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Buffer Org 2");
+            UUID geofenceId = insertSquareGeofence(connection, organizationId, "Depot", -74.07, 4.71, 0.0005, "on_exit", true);
+            double justOutsideLon = -74.07 + 0.0005 + 0.0001;
+
+            Set<UUID> covered = evaluator.bufferedContainmentAmong(Set.of(geofenceId), 4.71, justOutsideLon, 5.0);
+
+            assertThat(covered).isEmpty();
+        }
+    }
+
+    @Test
+    void bufferedContainmentAmongReturnsEmptyForAnEmptyIdSetWithoutQuerying() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        assertThat(evaluator.bufferedContainmentAmong(Set.of(), 4.71, -74.07, 50.0)).isEmpty();
+    }
+
+    @Test
+    void loadRulesReturnsTheRuleAndDwellSecsForEachRequestedGeofence() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Rules Org 1");
+            UUID enterGeofenceId = insertSquareGeofence(connection, organizationId, "Enter Zone", -74.07, 4.71, 0.01, "on_enter", true);
+            UUID dwellGeofenceId = insertDwellGeofence(connection, organizationId, "Dwell Zone", -74.05, 4.73, 0.01, 300);
+
+            Map<UUID, GeofenceRule> rules = evaluator.loadRules(Set.of(enterGeofenceId, dwellGeofenceId));
+
+            assertThat(rules.get(enterGeofenceId)).isEqualTo(new GeofenceRule(GeofenceRuleType.ON_ENTER, null));
+            assertThat(rules.get(dwellGeofenceId)).isEqualTo(new GeofenceRule(GeofenceRuleType.ON_DWELL, 300));
+        }
+    }
+
+    @Test
+    void loadRulesOmitsIdsThatDoNotExist() throws Exception {
+        migrate();
+        GeofenceEvaluator evaluator = newEvaluator();
+
+        Map<UUID, GeofenceRule> rules = evaluator.loadRules(Set.of(UUID.randomUUID()));
+
+        assertThat(rules).isEmpty();
     }
 
     // Test 6.9: proven against real data volume (500 scattered noise
@@ -333,5 +476,60 @@ class GeofenceEvaluatorTest {
             statement.setTimestamp(4, Timestamp.from(since));
             statement.executeUpdate();
         }
+    }
+
+    // WU4: same row shape as insertVehicleFenceState above, but also sets
+    // pending_since/pending_reading_count (V9) -- used to prove
+    // loadActiveMembershipStates() picks up an in-progress pending
+    // transition even while is_inside is still false.
+    private static void insertVehicleFenceStatePending(
+        Connection connection, UUID vehicleId, UUID geofenceId, boolean isInside, Instant since, Instant pendingSince, int pendingReadingCount
+    ) throws SQLException {
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO vehicle_fence_state (vehicle_id, geofence_id, is_inside, since, pending_since, pending_reading_count) "
+                    + "VALUES (?, ?, ?, ?, ?, ?)"
+            )
+        ) {
+            statement.setObject(1, vehicleId);
+            statement.setObject(2, geofenceId);
+            statement.setBoolean(3, isInside);
+            statement.setTimestamp(4, Timestamp.from(since));
+            statement.setTimestamp(5, Timestamp.from(pendingSince));
+            statement.setInt(6, pendingReadingCount);
+            statement.executeUpdate();
+        }
+    }
+
+    // WU4: an on_dwell geofence, same square shape as insertSquareGeofence
+    // above.
+    private static UUID insertDwellGeofence(
+        Connection connection, UUID organizationId, String name, double centerLon, double centerLat, double halfWidthDegrees, int dwellSecs
+    ) throws SQLException {
+        UUID id = UUID.randomUUID();
+        double minLon = centerLon - halfWidthDegrees;
+        double maxLon = centerLon + halfWidthDegrees;
+        double minLat = centerLat - halfWidthDegrees;
+        double maxLat = centerLat + halfWidthDegrees;
+        String wkt = String.format(
+            Locale.ROOT,
+            "POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))",
+            minLon, minLat, maxLon, minLat, maxLon, maxLat, minLon, maxLat, minLon, minLat
+        );
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO geofences (id, organization_id, name, area, rule, dwell_secs, is_active, created_at) "
+                    + "VALUES (?, ?, ?, ST_GeomFromText(?, 4326)::geography, 'on_dwell', ?, true, ?)"
+            )
+        ) {
+            statement.setObject(1, id);
+            statement.setObject(2, organizationId);
+            statement.setString(3, name);
+            statement.setString(4, wkt);
+            statement.setInt(5, dwellSecs);
+            statement.setTimestamp(6, Timestamp.from(Instant.now()));
+            statement.executeUpdate();
+        }
+        return id;
     }
 }
