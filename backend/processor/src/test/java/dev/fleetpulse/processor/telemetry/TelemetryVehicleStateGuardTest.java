@@ -1,5 +1,7 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,6 +19,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -66,7 +69,7 @@ class TelemetryVehicleStateGuardTest {
     @Test
     void staleMessageAfterARecentOneDoesNotRegressVehicleState() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU6-1");
         Instant recent = Instant.parse("2026-09-11T10:00:00Z");
         Instant stale = Instant.parse("2026-09-11T09:30:00Z");
@@ -86,7 +89,7 @@ class TelemetryVehicleStateGuardTest {
     @Test
     void staleMessageAfterARecentOneIsStillPersistedInPositions() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU6-2");
         Instant recent = Instant.parse("2026-09-11T10:00:00Z");
         Instant stale = Instant.parse("2026-09-11T09:30:00Z");
@@ -105,7 +108,7 @@ class TelemetryVehicleStateGuardTest {
     @Test
     void newerMessageAfterAnOlderOneAdvancesVehicleState() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU6-3");
         Instant first = Instant.parse("2026-09-11T10:00:00Z");
         Instant second = Instant.parse("2026-09-11T10:05:00Z");
@@ -125,7 +128,7 @@ class TelemetryVehicleStateGuardTest {
     @Test
     void firstEverMessageForAVehicleLazilyCreatesVehicleState() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU6-4");
         Instant recordedAt = Instant.parse("2026-09-11T10:00:00Z");
         assertThat(vehicleStateRowExists(vehicleId)).isFalse();
@@ -137,12 +140,78 @@ class TelemetryVehicleStateGuardTest {
         assertThat(state.recordedAt()).isEqualTo(recordedAt);
     }
 
+    // Task 4.2: MotionDetector is only applied once the guard above already
+    // accepts a message as newer -- proven here by driving the SAME
+    // upsert two flushes apart, sustaining a high-speed sample long enough
+    // to cross MotionConfig.minStableDuration() (30s, matching
+    // newMotionStreakTracker()'s fixture).
+    @Test
+    void sustainedHighSpeedAcrossTwoMessagesTransitionsVehicleStateToMoving() throws Exception {
+        migrate();
+        JdbcTelemetryPositionWriter writer = newWriter();
+        UUID vehicleId = seedVehicle("Truck-WU7-1");
+        Instant first = Instant.parse("2026-09-11T10:00:00Z");
+        Instant second = first.plusSeconds(31);
+
+        writer.writeBatch(List.of(telemetry(vehicleId, first, 40.40, -3.70, 20.0)));
+        assertThat(readMotionState(vehicleId)).isEqualTo("STOPPED");
+
+        writer.writeBatch(List.of(telemetry(vehicleId, second, 40.41, -3.71, 20.0)));
+
+        assertThat(readMotionState(vehicleId)).isEqualTo(MotionState.MOVING.name());
+    }
+
+    // Task 4.2 composed with task 4.1's guard: a stale resend must not
+    // regress motion_state any more than it regresses location/recorded_at
+    // -- both are set in the very same guarded SET clause.
+    @Test
+    void staleMessageAfterReachingMovingDoesNotRegressMotionState() throws Exception {
+        migrate();
+        JdbcTelemetryPositionWriter writer = newWriter();
+        UUID vehicleId = seedVehicle("Truck-WU7-2");
+        Instant first = Instant.parse("2026-09-11T10:00:00Z");
+        Instant second = first.plusSeconds(31);
+        Instant stale = first.minusSeconds(3600);
+
+        writer.writeBatch(List.of(telemetry(vehicleId, first, 40.40, -3.70, 20.0)));
+        writer.writeBatch(List.of(telemetry(vehicleId, second, 40.41, -3.71, 20.0)));
+        assertThat(readMotionState(vehicleId)).isEqualTo(MotionState.MOVING.name());
+
+        writer.writeBatch(List.of(telemetry(vehicleId, stale, 0.0, 0.0, 0.0)));
+
+        assertThat(readMotionState(vehicleId)).isEqualTo(MotionState.MOVING.name());
+    }
+
+    // Task 4.2: a message without speedKmh cannot be evaluated by
+    // MotionDetector (VehicleMotionStreakTrackerTest already proves the
+    // pure computation) -- at the JDBC boundary this means motion_state
+    // simply stays NULL for a vehicle's first-ever message when no speed
+    // was ever reported, same as before this task existed.
+    @Test
+    void firstEverMessageWithoutSpeedLeavesMotionStateNull() throws Exception {
+        migrate();
+        JdbcTelemetryPositionWriter writer = newWriter();
+        UUID vehicleId = seedVehicle("Truck-WU7-3");
+
+        writer.writeBatch(List.of(telemetry(vehicleId, Instant.parse("2026-09-11T10:00:00Z"), 40.40, -3.70)));
+
+        assertThat(readMotionState(vehicleId)).isNull();
+    }
+
     private static void migrate() {
         Flyway.configure().dataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword()).load().migrate();
     }
 
     private static JdbcTemplate newJdbcTemplate() {
         return new JdbcTemplate(new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword()));
+    }
+
+    private static JdbcTelemetryPositionWriter newWriter() {
+        return new JdbcTelemetryPositionWriter(newJdbcTemplate(), newMotionStreakTracker());
+    }
+
+    private static VehicleMotionStreakTracker newMotionStreakTracker() {
+        return new VehicleMotionStreakTracker(new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
     }
 
     private static Connection connect() throws SQLException {
@@ -212,6 +281,19 @@ class TelemetryVehicleStateGuardTest {
     private record VehicleState(Instant recordedAt, double lat, double lon) {
     }
 
+    private static String readMotionState(UUID vehicleId) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement("SELECT motion_state FROM vehicle_state WHERE vehicle_id = ?")
+        ) {
+            statement.setObject(1, vehicleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getString("motion_state");
+            }
+        }
+    }
+
     private static UUID seedVehicle(String label) throws SQLException {
         try (Connection connection = connect()) {
             UUID organizationId = UUID.randomUUID();
@@ -241,5 +323,9 @@ class TelemetryVehicleStateGuardTest {
 
     private static TelemetryMessage telemetry(UUID vehicleId, Instant recordedAt, double lat, double lon) {
         return new TelemetryMessage(vehicleId, recordedAt, lat, lon, null, null, null);
+    }
+
+    private static TelemetryMessage telemetry(UUID vehicleId, Instant recordedAt, double lat, double lon, Double speedKmh) {
+        return new TelemetryMessage(vehicleId, recordedAt, lat, lon, speedKmh, null, false);
     }
 }

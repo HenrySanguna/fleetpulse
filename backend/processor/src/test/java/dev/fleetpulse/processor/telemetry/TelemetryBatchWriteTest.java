@@ -1,5 +1,6 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
@@ -56,7 +57,7 @@ class TelemetryBatchWriteTest {
     @Test
     void writerPersistsAValidPositionAsAGeographyPoint() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU4-1");
         Instant recordedAt = Instant.now();
         TelemetryMessage message = telemetry(vehicleId, recordedAt, 40.4, -3.7, 55.0, 180.0, true);
@@ -86,7 +87,7 @@ class TelemetryBatchWriteTest {
     @Test
     void writerSilentlyDropsAResentDuplicateViaOnConflictDoNothing() throws Exception {
         migrate();
-        JdbcTelemetryPositionWriter writer = new JdbcTelemetryPositionWriter(newJdbcTemplate());
+        JdbcTelemetryPositionWriter writer = newWriter();
         UUID vehicleId = seedVehicle("Truck-WU4-2");
         Instant recordedAt = Instant.now();
 
@@ -107,7 +108,7 @@ class TelemetryBatchWriteTest {
             new FleetpulseTelemetryImplausibilityProperties(300.0), new SimpleMeterRegistry()
         );
         TelemetryPositionBuffer buffer = new TelemetryPositionBuffer(
-            1000, Duration.ofMinutes(10), new JdbcTelemetryPositionWriter(newJdbcTemplate())
+            1000, Duration.ofMinutes(10), newWriter()
         );
         buffer.start();
         try {
@@ -136,7 +137,7 @@ class TelemetryBatchWriteTest {
         migrate();
         UUID vehicleId = seedVehicle("Truck-WU4-4");
         TelemetryPositionBuffer buffer = new TelemetryPositionBuffer(
-            1000, Duration.ofMinutes(10), new JdbcTelemetryPositionWriter(newJdbcTemplate())
+            1000, Duration.ofMinutes(10), newWriter()
         );
         buffer.start();
 
@@ -156,6 +157,14 @@ class TelemetryBatchWriteTest {
 
     private static JdbcTemplate newJdbcTemplate() {
         return new JdbcTemplate(new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword()));
+    }
+
+    private static JdbcTelemetryPositionWriter newWriter() {
+        return new JdbcTelemetryPositionWriter(newJdbcTemplate(), newMotionStreakTracker());
+    }
+
+    private static VehicleMotionStreakTracker newMotionStreakTracker() {
+        return new VehicleMotionStreakTracker(new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
     }
 
     private static Connection connect() throws SQLException {
