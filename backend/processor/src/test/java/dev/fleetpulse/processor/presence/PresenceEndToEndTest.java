@@ -34,7 +34,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -73,6 +75,7 @@ class PresenceEndToEndTest {
 
     private AnnotationConfigApplicationContext context;
     private MqttClient device;
+    private MqttClient lateSubscriber;
 
     @AfterEach
     void tearDown() throws Exception {
@@ -81,6 +84,12 @@ class PresenceEndToEndTest {
                 device.disconnect();
             }
             device.close();
+        }
+        if (lateSubscriber != null) {
+            if (lateSubscriber.isConnected()) {
+                lateSubscriber.disconnect();
+            }
+            lateSubscriber.close();
         }
         if (context != null) {
             context.close();
@@ -134,6 +143,49 @@ class PresenceEndToEndTest {
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
             assertThat(readOnline(vehicleId)).isTrue());
+    }
+
+    // Spec requirement 4, third scenario ("Cliente que se suscribe despues de
+    // la desconexion"): a client that subscribes to the vehicle's status
+    // topic AFTER the will has already fired must still receive the offline
+    // state immediately, via MQTT's own retained-message delivery -- not by
+    // having been listening when the will was published. Reuses the exact
+    // disconnectForcibly(0,0,false) mechanism from test 6.6 to trigger the
+    // will and confirm the consumer-side offline write, then only afterward
+    // connects a brand-new subscriber client, proving the retain flag -- not
+    // test timing -- is what delivers the last-known state to a late joiner.
+    @Test
+    void aClientSubscribingAfterTheWillFiredImmediatelyReceivesTheRetainedOfflinePayload() throws Exception {
+        migrate();
+        context = startContext();
+        UUID vehicleId = seedVehicle("Truck-WU8-3");
+        connectDeviceWithRegisteredWill(vehicleId);
+        announceOnline(vehicleId);
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+            assertThat(readOnline(vehicleId)).isTrue());
+
+        device.disconnectForcibly(0L, 0L, false);
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+            assertThat(readOnline(vehicleId)).isFalse());
+
+        List<String> received = subscribeLateAndCapture(topic(vehicleId));
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+            assertThat(received).contains("{\"online\":false}"));
+    }
+
+    private List<String> subscribeLateAndCapture(String topic) throws Exception {
+        lateSubscriber = new MqttClient(brokerUrl(), "fleetpulse-test-late-subscriber-" + UUID.randomUUID(), new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setConnectionTimeout(3);
+        options.setAutomaticReconnect(false);
+        options.setUserName(SecuredMosquittoTestSupport.SERVICE_USERNAME);
+        options.setPassword(SecuredMosquittoTestSupport.SERVICE_PASSWORD.toCharArray());
+        lateSubscriber.connect(options);
+        CopyOnWriteArrayList<String> received = new CopyOnWriteArrayList<>();
+        lateSubscriber.subscribe(topic, 1, (receivedTopic, message) ->
+            received.add(new String(message.getPayload(), StandardCharsets.UTF_8)));
+        return received;
     }
 
     private AnnotationConfigApplicationContext startContext() {
