@@ -22,6 +22,10 @@ dependencies {
     // import that Gradle's plain platform() import does not propagate here.
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    // PartitionMaintenanceTaskTest (task 1.5) needs a real PostGIS+pg_partman
+    // container, same as domain's own Testcontainers-based schema tests;
+    // domain declares this as testImplementation, which never propagates.
+    testImplementation("org.testcontainers:testcontainers-postgresql")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
