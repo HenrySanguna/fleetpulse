@@ -2,6 +2,8 @@ package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
+import dev.fleetpulse.processor.config.FleetpulseTelemetryBufferProperties;
+import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -37,7 +39,11 @@ import static org.awaitility.Awaitility.await;
 // module, and it needs a real Spring lifecycle (afterPropertiesSet + start)
 // that plain `new` + direct method calls do not provide, without pulling in
 // the full application context (datasource, JPA, etc.) this test has no use
-// for.
+// for. WU5 wired TelemetryImplausibilityFilter/TelemetryPositionBuffer into
+// the listener's constructor, so this context now registers both too; a
+// no-op TelemetryPositionWriter keeps this test's concern (malformed vs.
+// valid counters) free of a real database -- persistence itself is proven
+// by TelemetryBatchWriteTest and the new end-to-end ingest tests.
 @Testcontainers
 class TelemetryMqttConsumerTest {
 
@@ -115,11 +121,18 @@ class TelemetryMqttConsumerTest {
             SecuredMosquittoTestSupport.SERVICE_USERNAME, SecuredMosquittoTestSupport.SERVICE_PASSWORD
         ));
         ctx.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
+        ctx.registerBean(FleetpulseTelemetryImplausibilityProperties.class, () -> new FleetpulseTelemetryImplausibilityProperties(300.0));
+        ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(500, Duration.ofSeconds(5)));
+        TelemetryPositionWriter noOpWriter = messages -> { };
+        ctx.registerBean(TelemetryPositionWriter.class, () -> noOpWriter);
         // @EnableIntegration registers the MessagingAnnotationPostProcessor
         // that turns @ServiceActivator into an actual channel subscriber;
         // the real app gets this for free from Boot's IntegrationAutoConfiguration,
         // but this bare AnnotationConfigApplicationContext does not.
-        ctx.register(IntegrationTestConfig.class, TelemetryMqttConfig.class, TelemetryPayloadParser.class, TelemetryMessageListener.class);
+        ctx.register(
+            IntegrationTestConfig.class, TelemetryMqttConfig.class, TelemetryPayloadParser.class,
+            TelemetryImplausibilityFilter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
+        );
         ctx.refresh();
         return ctx;
     }
