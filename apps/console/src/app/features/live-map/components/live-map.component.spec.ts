@@ -20,6 +20,7 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
     readonly addSourceCalls: Array<{ id: string; config: unknown }> = [];
     readonly addLayerCalls: Array<Record<string, unknown>> = [];
     readonly removeCalls: number[] = [];
+    readonly flyToCalls: Array<Record<string, unknown>> = [];
     private readonly sources = new Map<string, FakeGeoJSONSource>();
     private readonly listeners = new Map<string, Handler[]>();
     private readonly layerListeners = new Map<string, Handler[]>();
@@ -79,6 +80,14 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
 
     remove(): void {
       this.removeCalls.push(1);
+    }
+
+    flyTo(options: Record<string, unknown>): void {
+      this.flyToCalls.push(options);
+    }
+
+    getZoom(): number {
+      return 2;
     }
   }
 
@@ -187,5 +196,63 @@ describe('LiveMapComponent', () => {
     fixture.destroy();
 
     expect(map.removeCalls.length).toBe(1);
+  });
+
+  // Task 5.2: map -> highlight. The selected vehicle's feature carries
+  // `selected: true`, which the layer's `icon-size` expression (task 5.2)
+  // reads to render it larger.
+  it('marks the selected vehicle as selected in the vehicles source data', async () => {
+    const { map } = await createAndLoad();
+    store.applySnapshot({
+      vehicles: [
+        { vehicleId: 'v1', lat: 1, lon: 2, recordedAt: '2026-01-01T00:00:00Z' },
+        { vehicleId: 'v2', lat: 3, lon: 4, recordedAt: '2026-01-01T00:00:00Z' },
+      ],
+    });
+    store.selectVehicle('v2');
+    TestBed.tick();
+    await nextFrame();
+    await nextFrame();
+
+    const source = map.getSource('vehicles');
+    const calls = source?.setData.mock.calls ?? [];
+    const lastCall = calls[calls.length - 1]?.[0] as {
+      features: Array<{ properties: { vehicleId: string; selected: boolean } }>;
+    };
+    const byId = new Map(lastCall.features.map((feature) => [feature.properties.vehicleId, feature.properties.selected]));
+    expect(byId.get('v1')).toBe(false);
+    expect(byId.get('v2')).toBe(true);
+  });
+
+  it('declares icon-size as a data-driven expression keyed on the selected property', async () => {
+    const { map } = await createAndLoad();
+
+    const vehicleLayer = map.addLayerCalls.find((layer) => layer['id'] === 'vehicles-layer') as {
+      layout: Record<string, unknown>;
+    };
+    expect(JSON.stringify(vehicleLayer.layout['icon-size'])).toContain('selected');
+  });
+
+  // Task 5.2: list -> map centering. Reads the vehicle's real reported
+  // lat/lon from FleetStore, never an interpolated value.
+  it('flies to the selected vehicle real reported position once the style has loaded', async () => {
+    const { map } = await createAndLoad();
+    store.applySnapshot({ vehicles: [{ vehicleId: 'v1', lat: 12, lon: 34, recordedAt: '2026-01-01T00:00:00Z' }] });
+    TestBed.tick();
+
+    store.selectVehicle('v1');
+    TestBed.tick();
+
+    expect(map.flyToCalls.length).toBe(1);
+    expect(map.flyToCalls[0]?.['center']).toEqual([34, 12]);
+  });
+
+  it('does not fly to an unknown selected vehicle', async () => {
+    const { map } = await createAndLoad();
+
+    store.selectVehicle('missing');
+    TestBed.tick();
+
+    expect(map.flyToCalls.length).toBe(0);
   });
 });

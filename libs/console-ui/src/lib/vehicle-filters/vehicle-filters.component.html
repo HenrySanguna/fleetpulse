@@ -1,0 +1,32 @@
+<div class="flex flex-col gap-3">
+  <input
+    pInputText
+    type="text"
+    class="w-full"
+    [value]="filters().search"
+    (input)="onSearchInput($event)"
+    placeholder="Search by label or vehicle ID"
+    aria-label="Search vehicles"
+  />
+
+  <p-select
+    [options]="motionStateOptions"
+    optionLabel="label"
+    optionValue="value"
+    [ngModel]="filters().motionState"
+    (ngModelChange)="onMotionStateChange($event)"
+    placeholder="All states"
+    class="w-full"
+    aria-label="Filter by motion state"
+  />
+
+  <label class="flex items-center gap-2" for="online-only-filter">
+    <p-checkbox
+      [binary]="true"
+      [ngModel]="filters().onlineOnly"
+      (ngModelChange)="onOnlineOnlyChange($event)"
+      inputId="online-only-filter"
+    />
+    <span>Online only</span>
+  </label>
+</div>

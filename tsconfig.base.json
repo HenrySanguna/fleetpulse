@@ -15,7 +15,8 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "paths": {
-      "@fleetpulse/api-client": ["libs/api-client/src/index.ts"]
+      "@fleetpulse/api-client": ["libs/api-client/src/index.ts"],
+      "@fleetpulse/console-ui": ["libs/console-ui/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

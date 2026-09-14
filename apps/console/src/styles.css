@@ -1,5 +1,17 @@
 /* You can add global styles to this file, and also import other style files */
 
+/* CSS requires every `@import` to precede all other rules, including
+   `@plugin` -- both imports have to stay together at the top. */
+
+/* Task 5.1: Tailwind v4 is CSS-first (no tailwind.config.js) -- utilities
+   only, PrimeNG owns componentry. */
+@import 'tailwindcss';
+
 /* Task 4.1: MapLibre GL's own stylesheet (canvas sizing, controls, popups).
    Required for the map to render/size correctly -- not optional chrome. */
 @import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Task 5.1: `tailwindcss-primeui` maps PrimeNG's CSS design tokens (e.g.
+   `--p-primary-color`) onto Tailwind utility classes (e.g. `bg-primary-100`),
+   so the two systems share one palette. */
+@plugin 'tailwindcss-primeui';

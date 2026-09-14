@@ -1,0 +1,21 @@
+{
+  "name": "console-ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "prefix": "console-ui",
+  "sourceRoot": "libs/console-ui/src",
+  "tags": ["type:ui", "scope:console"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "options": {
+        "buildTarget": "console:build:development",
+        "tsConfig": "libs/console-ui/tsconfig.spec.json",
+        "watch": false
+      }
+    }
+  }
+}

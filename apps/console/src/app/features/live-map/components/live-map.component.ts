@@ -1,4 +1,14 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, effect, inject, viewChild } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  OnDestroy,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Map as MapLibreMap } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
@@ -51,7 +61,11 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   private latestVehicles: readonly VehicleState[] = [];
   private map: MapLibreMap | undefined;
   private frameId: number | undefined;
-  private styleLoaded = false;
+  // A signal (not a plain field) specifically so the task 5.2 centering
+  // effect below re-runs once the map finishes loading, even if a selection
+  // already happened before that -- effects only re-run when a *signal*
+  // dependency changes, not a plain class field mutation.
+  private readonly styleLoaded = signal(false);
 
   constructor() {
     // Task 4.4: every time FleetStore's real (never interpolated) reported
@@ -76,6 +90,25 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       this.renderTrack(this.trackService.trackLine());
     });
+
+    // Task 5.2: list -> map. Centers on whichever vehicle FleetStore.
+    // selectedVehicleId() points at -- fired by either the side panel (WU5)
+    // or this component's own marker click handler below (WU4), since both
+    // write to the same signal. Reads the vehicle's real reported lat/lon
+    // (never the interpolated visual sample) -- centering only needs to be
+    // approximately right, and this keeps the map's one MapLibre-specific
+    // side effect independent of the animation loop's per-frame state.
+    effect(() => {
+      const vehicleId = this.fleetStore.selectedVehicleId();
+      const map = this.map;
+      if (!vehicleId || !map || !this.styleLoaded()) {
+        return;
+      }
+      const vehicle = this.fleetStore.vehicles().get(vehicleId);
+      if (typeof vehicle?.lat === 'number' && typeof vehicle.lon === 'number') {
+        map.flyTo({ center: [vehicle.lon, vehicle.lat], zoom: Math.max(map.getZoom(), 14), essential: true });
+      }
+    });
   }
 
   ngAfterViewInit(): void {
@@ -91,7 +124,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       this.registerVehicleIcon(map);
       this.addVehicleLayer(map);
       this.addTrackLayer(map);
-      this.styleLoaded = true;
+      this.styleLoaded.set(true);
 
       map.on('click', VEHICLES_LAYER_ID, (event: MapLayerMouseEvent) => {
         const vehicleId = event.features?.[0]?.properties?.['vehicleId'];
@@ -113,7 +146,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     }
     this.map?.remove();
     this.map = undefined;
-    this.styleLoaded = false;
+    this.styleLoaded.set(false);
   }
 
   // Task 4.4: the rAF loop itself -- the one piece that genuinely has to
@@ -126,17 +159,17 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   };
 
   private updateVehiclePositions(): void {
-    if (!this.styleLoaded || !this.map) {
+    if (!this.styleLoaded() || !this.map) {
       return;
     }
     const positions = this.interpolation.sampleAll(performance.now());
-    const collection = toVehicleFeatureCollection(this.latestVehicles, positions);
+    const collection = toVehicleFeatureCollection(this.latestVehicles, positions, this.fleetStore.selectedVehicleId());
     const source = this.map.getSource(VEHICLES_SOURCE_ID) as GeoJSONSource | undefined;
     source?.setData(collection);
   }
 
   private renderTrack(feature: TrackLineFeature | undefined): void {
-    if (!this.styleLoaded || !this.map) {
+    if (!this.styleLoaded() || !this.map) {
       return;
     }
     const source = this.map.getSource(TRACK_SOURCE_ID) as GeoJSONSource | undefined;
@@ -186,7 +219,10 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
         'icon-rotate': ['get', 'heading'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
-        'icon-size': 0.8,
+        // Task 5.2: the selected vehicle's marker renders larger -- the
+        // "highlight" half of list<->map selection sync (the other half is
+        // the flyTo centering effect in the constructor above).
+        'icon-size': ['case', ['==', ['get', 'selected'], true], 1.15, 0.8],
       },
       paint: {
         // Task 4.3: color by motion state.

@@ -45,7 +45,14 @@ const { mockConnect, fakeClients } = vi.hoisted(() => {
   return { mockConnect, fakeClients };
 });
 
-vi.mock('mqtt', () => ({ connect: mockConnect }));
+// `mqtt-connection.service.ts` imports the default export (`import mqtt from
+// 'mqtt'; mqtt.connect(...)`) -- the browser ESM build MQTT.js ships
+// (`mqtt/dist/mqtt.esm.js`) only has a default export, unlike its CJS build,
+// so a named `{ connect }` import fails to resolve under esbuild's browser
+// bundling even though it type-checks and resolves fine under Vitest/Node's
+// CJS interop. The mock mirrors both shapes so it stays valid regardless of
+// which import style the source uses.
+vi.mock('mqtt', () => ({ default: { connect: mockConnect }, connect: mockConnect }));
 
 const ORG_ID = 'org-1';
 const CREDENTIALS = {

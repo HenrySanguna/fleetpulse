@@ -40,6 +40,7 @@ describe('toVehicleFeatureCollection', () => {
       motionState: 'MOVING',
       online: true,
       stale: false,
+      selected: false,
     });
   });
 
@@ -56,6 +57,7 @@ describe('toVehicleFeatureCollection', () => {
       motionState: 'STOPPED',
       online: false,
       stale: false,
+      selected: false,
     });
   });
 
@@ -67,5 +69,24 @@ describe('toVehicleFeatureCollection', () => {
     );
 
     expect(collection.features[0]?.properties.stale).toBe(true);
+  });
+
+  // Task 5.2: the map's own highlight signal for the selected vehicle.
+  it('marks the feature matching selectedVehicleId as selected, and every other feature as not', () => {
+    const collection = toVehicleFeatureCollection(
+      [vehicle({ vehicleId: 'v1' }), vehicle({ vehicleId: 'v2' })],
+      [position({ vehicleId: 'v1' }), position({ vehicleId: 'v2' })],
+      'v2',
+    );
+
+    const byId = new Map(collection.features.map((feature) => [feature.properties.vehicleId, feature.properties]));
+    expect(byId.get('v1')?.selected).toBe(false);
+    expect(byId.get('v2')?.selected).toBe(true);
+  });
+
+  it('marks no feature as selected when selectedVehicleId is undefined', () => {
+    const collection = toVehicleFeatureCollection([vehicle({ vehicleId: 'v1' })], [position({ vehicleId: 'v1' })]);
+
+    expect(collection.features[0]?.properties.selected).toBe(false);
   });
 });

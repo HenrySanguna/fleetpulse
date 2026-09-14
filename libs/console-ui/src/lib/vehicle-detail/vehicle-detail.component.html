@@ -1,0 +1,36 @@
+@if (vehicle(); as v) {
+  <p-card [header]="v.label ?? v.vehicleId" data-testid="vehicle-detail">
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+      <dt class="text-surface-500">Vehicle ID</dt>
+      <dd>{{ v.vehicleId }}</dd>
+
+      <dt class="text-surface-500">Status</dt>
+      <dd>
+        <p-tag [severity]="v.online ? 'success' : 'danger'" [value]="v.online ? 'Online' : 'Offline'" />
+      </dd>
+
+      <dt class="text-surface-500">Motion state</dt>
+      <dd data-testid="vehicle-detail-motion-state">{{ v.motionState ?? 'Unknown' }}</dd>
+
+      <dt class="text-surface-500">Reported position</dt>
+      <dd data-testid="vehicle-detail-position">
+        @if (v.lat !== undefined && v.lon !== undefined) {
+          {{ v.lat }}, {{ v.lon }}
+        } @else {
+          Unknown
+        }
+      </dd>
+
+      <dt class="text-surface-500">Speed</dt>
+      <dd>{{ v.speedKmh !== undefined ? v.speedKmh + ' km/h' : 'Unknown' }}</dd>
+
+      <dt class="text-surface-500">Heading</dt>
+      <dd>{{ v.heading !== undefined ? v.heading + '°' : 'Unknown' }}</dd>
+
+      <dt class="text-surface-500">Last reported at</dt>
+      <dd data-testid="vehicle-detail-recorded-at">{{ v.recordedAt ?? 'Unknown' }}</dd>
+    </dl>
+  </p-card>
+} @else {
+  <p class="text-surface-500">Select a vehicle to see its details.</p>
+}

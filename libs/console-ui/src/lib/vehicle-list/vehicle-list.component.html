@@ -1,0 +1,25 @@
+<ul class="flex flex-col gap-1" role="listbox" aria-label="Vehicles">
+  @for (vehicle of vehicles(); track vehicle.vehicleId) {
+    <li>
+      <button
+        type="button"
+        role="option"
+        class="flex w-full items-center justify-between gap-2 rounded px-3 py-2 text-left"
+        [class.bg-primary-100]="vehicle.vehicleId === selectedVehicleId()"
+        [attr.aria-selected]="vehicle.vehicleId === selectedVehicleId()"
+        (click)="vehicleSelected.emit(vehicle.vehicleId)"
+      >
+        <span class="flex flex-col">
+          <span class="font-medium">{{ vehicle.label ?? vehicle.vehicleId }}</span>
+          <span class="text-sm text-surface-500">{{ vehicle.vehicleId }}</span>
+        </span>
+        <span class="flex items-center gap-1">
+          <p-tag [severity]="motionSeverity(vehicle)" [value]="vehicle.motionState ?? 'STOPPED'" />
+          <p-tag [severity]="vehicle.online ? 'success' : 'danger'" [value]="vehicle.online ? 'Online' : 'Offline'" />
+        </span>
+      </button>
+    </li>
+  } @empty {
+    <li class="px-3 py-2 text-surface-500">No vehicles match the current filters.</li>
+  }
+</ul>
