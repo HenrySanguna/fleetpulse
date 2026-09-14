@@ -50,6 +50,7 @@
     "@angular/forms": "~21.2.0",
     "@angular/platform-browser": "~21.2.0",
     "@angular/router": "~21.2.0",
+    "mqtt": "^5.15.2",
     "rxjs": "~7.8.0"
   }
 }
