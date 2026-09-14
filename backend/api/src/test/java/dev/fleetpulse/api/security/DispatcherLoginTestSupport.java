@@ -8,7 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -72,24 +74,46 @@ public final class DispatcherLoginTestSupport {
         return cookies;
     }
 
+    // WU6 discovery (dev.fleetpulse.api.geofencing.GeofenceEndpointTest, the
+    // first test class to call login()+mutationHeadersFrom() from several
+    // separate @Test methods sharing one class-cached TestRestTemplate bean):
+    // when a later test method's /login carries a stale XSRF-TOKEN cookie
+    // left over from an earlier test method's session (TestRestTemplate's
+    // underlying HttpClient5 request factory keeps its own cookie store
+    // across calls on the same instance), Spring Security's CSRF handling
+    // can emit TWO Set-Cookie: XSRF-TOKEN=... headers on that one /login
+    // response -- an empty one clearing the stale value, then the real new
+    // token. Naively taking the FIRST XSRF-TOKEN entry (as this method used
+    // to) picks the empty one, producing a Cookie header with the same name
+    // twice and an empty X-XSRF-TOKEN, which the server's CSRF filter
+    // rejects with 403 -- indistinguishable from an authorization failure by
+    // status code alone. Deduplicating by cookie name and keeping the LAST
+    // occurrence matches ordinary Set-Cookie replacement semantics (the last
+    // Set-Cookie for a given name in one response is the one that ends up
+    // stored) and is a strict no-op for the common single-Set-Cookie-per-name
+    // case every other caller of this class already relies on.
     private static String combinedCookieHeader(List<String> setCookieHeaders) {
-        StringBuilder combined = new StringBuilder();
+        Map<String, String> latestByName = new LinkedHashMap<>();
         for (String setCookie : setCookieHeaders) {
-            if (!combined.isEmpty()) {
-                combined.append("; ");
-            }
-            combined.append(setCookie.split(";", 2)[0]);
+            String pair = setCookie.split(";", 2)[0];
+            int separator = pair.indexOf('=');
+            String name = separator < 0 ? pair : pair.substring(0, separator);
+            latestByName.put(name, pair);
         }
-        return combined.toString();
+        return String.join("; ", latestByName.values());
     }
 
     private static String csrfTokenFrom(List<String> setCookieHeaders) {
+        String token = null;
         for (String setCookie : setCookieHeaders) {
             String cookiePair = setCookie.split(";", 2)[0];
             if (cookiePair.startsWith("XSRF-TOKEN=")) {
-                return cookiePair.substring("XSRF-TOKEN=".length());
+                token = cookiePair.substring("XSRF-TOKEN=".length());
             }
         }
-        throw new AssertionError("the login response must set an XSRF-TOKEN cookie");
+        if (token == null) {
+            throw new AssertionError("the login response must set an XSRF-TOKEN cookie");
+        }
+        return token;
     }
 }

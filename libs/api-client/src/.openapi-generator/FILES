@@ -10,6 +10,8 @@ api/dispatcherSessionController.service.ts
 api/dispatcherSessionController.serviceInterface.ts
 api/fleetStateController.service.ts
 api/fleetStateController.serviceInterface.ts
+api/geofenceController.service.ts
+api/geofenceController.serviceInterface.ts
 api/mqttCredentialsController.service.ts
 api/mqttCredentialsController.serviceInterface.ts
 api/vehicleTrackController.service.ts
@@ -21,6 +23,10 @@ index.ts
 model/deviceCredentialResponse.ts
 model/dispatcherSelfView.ts
 model/fleetStateResponse.ts
+model/geoPointRequest.ts
+model/geoPointResponse.ts
+model/geofenceRequest.ts
+model/geofenceResponse.ts
 model/models.ts
 model/mqttCredentialsResponse.ts
 model/trackPointResponse.ts
