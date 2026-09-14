@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
-import { connect, type MqttClient } from 'mqtt';
+import mqtt, { type MqttClient } from 'mqtt';
 import { MqttCredentialsControllerService, type MqttCredentialsResponse } from '@fleetpulse/api-client';
 import type { MqttConnectionStatus, MqttInboundMessage } from './mqtt-connection.models';
 
@@ -102,7 +102,7 @@ export class MqttConnectionService implements OnDestroy {
     }
 
     const organizationId = this.organizationId;
-    const client = connect(credentials.wsUrl, {
+    const client = mqtt.connect(credentials.wsUrl, {
       username: credentials.username,
       password: credentials.password,
       clean: true,

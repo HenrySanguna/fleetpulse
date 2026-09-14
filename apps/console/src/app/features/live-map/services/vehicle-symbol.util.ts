@@ -11,6 +11,10 @@ export interface VehicleFeatureProperties {
   // task 4.5's dimming signal: no reported position within the expected
   // window, distinct from `online` (task 4.3's own offline-dimming trigger).
   readonly stale: boolean;
+  // Task 5.2: true for the vehicle FleetStore.selectedVehicleId() currently
+  // points at, so the vehicle layer's paint expressions (LiveMapComponent)
+  // can highlight it without a second lookup.
+  readonly selected: boolean;
 }
 
 export const EMPTY_VEHICLE_FEATURE_COLLECTION: FeatureCollection<Point, VehicleFeatureProperties> = {
@@ -32,6 +36,7 @@ export const EMPTY_VEHICLE_FEATURE_COLLECTION: FeatureCollection<Point, VehicleF
 export function toVehicleFeatureCollection(
   vehicles: readonly VehicleState[],
   positions: readonly InterpolatedVehiclePosition[],
+  selectedVehicleId?: string,
 ): FeatureCollection<Point, VehicleFeatureProperties> {
   const positionByVehicleId = new Map(positions.map((position) => [position.vehicleId, position]));
   const features: Feature<Point, VehicleFeatureProperties>[] = [];
@@ -53,6 +58,7 @@ export function toVehicleFeatureCollection(
         motionState: vehicle.motionState ?? 'STOPPED',
         online: vehicle.online ?? false,
         stale: position.stale,
+        selected: vehicle.vehicleId === selectedVehicleId,
       },
     });
   }

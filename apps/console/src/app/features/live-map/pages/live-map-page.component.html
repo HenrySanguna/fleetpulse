@@ -1,0 +1,16 @@
+<div class="flex h-full">
+  <aside class="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-r border-surface-200 p-4">
+    <console-ui-connection-status [status]="connectionStatus()" />
+    <console-ui-vehicle-filters [filters]="filters()" (filtersChange)="onFiltersChange($event)" />
+    <console-ui-vehicle-list
+      class="flex-1 overflow-y-auto"
+      [vehicles]="vehicles()"
+      [selectedVehicleId]="selectedVehicleId()"
+      (vehicleSelected)="onVehicleSelected($event)"
+    />
+    <console-ui-vehicle-detail [vehicle]="selectedVehicle()" />
+  </aside>
+  <main class="relative flex-1">
+    <app-live-map />
+  </main>
+</div>
