@@ -37,7 +37,7 @@ rules:
       - Telemetry writes are batched (JdbcTemplate.batchUpdate or equivalent), never one INSERT per message
       - Spatial queries use PostGIS ST_* functions via native query; never load geometry into Java memory to compute containment
       - Partition maintenance is invoked explicitly from a @Scheduled task calling partman.run_maintenance_proc(); never rely on pg_partman's background worker (Neon suspends compute on idle)
-    tdd: true
+    tdd: false
     test_command: "npx nx affected -t test"
 
   verify:
@@ -55,7 +55,8 @@ rules:
     - Merge delta specs into openspec/specs/{domain}/spec.md only after the change is verified
 
 testing:
-  strict_tdd: true
+  strict_tdd: false
+  strict_tdd_disabled_note: "Disabled by explicit user request (2026-09-14). Prior source below kept for reference; project.md's own 'Testing -- no negociable' section is unchanged by this toggle -- it governs coverage/idempotency/Testcontainers requirements, not the RED/GREEN/TRIANGULATE workflow discipline this flag controls."
   strict_tdd_source: "openspec/project.md section 'Testing -- no negociable' (100% branch coverage on geo-core, mandatory idempotency/out-of-order tests per MQTT consumer, Testcontainers-only integration tests, execution-plan tests for spatial/history queries)"
   detected: "2026-09-01"
   status: "No test runner exists yet -- greenfield repo, only .gitignore + openspec/ committed. Runner setup is in scope of change 00-bootstrap-monorepo."
