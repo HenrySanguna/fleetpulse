@@ -1,6 +1,11 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
+import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
+import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
+import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
+import dev.fleetpulse.processor.geofencing.JdbcVehicleFenceStateWriter;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
@@ -160,11 +165,30 @@ class TelemetryBatchWriteTest {
     }
 
     private static JdbcTelemetryPositionWriter newWriter() {
-        return new JdbcTelemetryPositionWriter(newJdbcTemplate(), newMotionStreakTracker());
+        JdbcTemplate jdbcTemplate = newJdbcTemplate();
+        return new JdbcTelemetryPositionWriter(jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate));
     }
 
     private static VehicleMotionStreakTracker newMotionStreakTracker() {
         return new VehicleMotionStreakTracker(new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
+    }
+
+    // Task 2.4/WU4: no geofences are ever seeded by this test, so this
+    // dispatcher will always find zero relevant geofences to evaluate --
+    // wired with a real GeofenceEvaluator/JdbcVehicleFenceStateWriter/
+    // JdbcGeofenceAlertWriter against the same database, but a no-op
+    // GeofenceAlertPublisher, since this test has no broker and no use for
+    // one (this class's own tests, GeofenceEvaluatorTest and
+    // GeofenceRuleEngineTest, already cover the geofencing behavior itself).
+    private static GeofenceRuleDispatcher newGeofenceRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new GeofenceRuleDispatcher(
+            jdbcTemplate,
+            new GeofenceEvaluator(jdbcTemplate),
+            new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0),
+            alert -> { },
+            new JdbcVehicleFenceStateWriter(jdbcTemplate),
+            new JdbcGeofenceAlertWriter(jdbcTemplate)
+        );
     }
 
     private static Connection connect() throws SQLException {
