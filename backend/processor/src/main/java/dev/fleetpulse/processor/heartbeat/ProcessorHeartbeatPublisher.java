@@ -7,6 +7,7 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -34,8 +35,12 @@ public class ProcessorHeartbeatPublisher {
     private final FleetpulseMqttProperties mqttProperties;
     private final FleetpulseHeartbeatProperties heartbeatProperties;
 
+    // Same ambiguity as MqttBrokerHealthIndicator: 4 MqttPahoClientFactory
+    // beans exist (alert/presence/telemetry each match their own parameter
+    // name, so Spring's by-name fallback resolves those automatically --
+    // this one's generic `clientFactory` name doesn't match any of them).
     public ProcessorHeartbeatPublisher(
-        MqttPahoClientFactory clientFactory,
+        @Qualifier("mqttPahoClientFactory") MqttPahoClientFactory clientFactory,
         FleetpulseMqttProperties mqttProperties,
         FleetpulseHeartbeatProperties heartbeatProperties
     ) {
