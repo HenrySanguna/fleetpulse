@@ -1,3 +1,19 @@
 :host {
   display: block;
+  /* Bug found via visual verification (jsdom-based component tests never
+     compute real CSS layout, so this went uncaught since WU7): with no
+     height set, a plain block :host has height:auto inside <main>'s
+     non-flex box, so the h-full/w-full map container below it collapses
+     to 0px -- MapLibre initializes against a zero-size canvas with no
+     error, just a blank map. */
+  height: 100%;
+}
+
+.toolbar-float {
+  top: 16px;
+  left: 16px;
+  background: var(--fp-surface);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(16, 33, 43, 0.12);
+  padding: 12px 14px;
 }

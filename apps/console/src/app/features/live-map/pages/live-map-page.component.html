@@ -1,16 +1,32 @@
-<div class="flex h-full">
-  <aside class="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-r border-surface-200 p-4">
-    <console-ui-connection-status [status]="connectionStatus()" />
-    <console-ui-vehicle-filters [filters]="filters()" (filtersChange)="onFiltersChange($event)" />
-    <console-ui-vehicle-list
-      class="flex-1 overflow-y-auto"
-      [vehicles]="vehicles()"
-      [selectedVehicleId]="selectedVehicleId()"
-      (vehicleSelected)="onVehicleSelected($event)"
-    />
-    <console-ui-vehicle-detail [vehicle]="selectedVehicle()" />
+<div class="live-map-page flex h-full">
+  <aside class="sidebar flex w-[360px] shrink-0 flex-col overflow-y-auto">
+    <div class="sidebar-section">
+      <console-ui-connection-status [status]="connectionStatus()" />
+    </div>
+    <div class="sidebar-section">
+      <console-ui-vehicle-filters [filters]="filters()" (filtersChange)="onFiltersChange($event)" />
+    </div>
+    <div class="sidebar-section flex-1 overflow-y-auto">
+      <console-ui-vehicle-list
+        [vehicles]="vehicles()"
+        [selectedVehicleId]="selectedVehicleId()"
+        (vehicleSelected)="onVehicleSelected($event)"
+      />
+    </div>
+    <div class="sidebar-section">
+      <console-ui-vehicle-detail [vehicle]="selectedVehicle()" />
+    </div>
   </aside>
   <main class="relative flex-1">
     <app-live-map />
+
+    <div class="map-toolbar-chip">{{ vehicles().length }} vehicles visible</div>
+
+    <div class="map-legend">
+      <div class="map-legend-row"><span class="map-legend-dot map-legend-dot-moving"></span>Moving</div>
+      <div class="map-legend-row"><span class="map-legend-dot map-legend-dot-idling"></span>Idling</div>
+      <div class="map-legend-row"><span class="map-legend-dot map-legend-dot-stopped"></span>Stopped</div>
+      <div class="map-legend-row"><span class="map-legend-dot map-legend-dot-geofence"></span>Geofence</div>
+    </div>
   </main>
 </div>

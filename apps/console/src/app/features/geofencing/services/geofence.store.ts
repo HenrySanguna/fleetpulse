@@ -55,5 +55,9 @@ export const GeofenceStore = signalStore(
     select(id: string | undefined): void {
       patchState(store, { selectedId: id });
     },
+
+    reset(): void {
+      patchState(store, INITIAL_STATE);
+    },
   })),
 );

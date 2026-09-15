@@ -1,0 +1,56 @@
+<div class="shell">
+  <div class="grid-bg"></div>
+  <div class="radar" style="width: 900px; height: 900px"></div>
+  <div class="radar" style="width: 640px; height: 640px"></div>
+  <div class="radar" style="width: 380px; height: 380px"></div>
+
+  <div class="status-chip"><span class="status-dot"></span>SISTEMA EN LÍNEA &middot; MQTT OK</div>
+
+  <div class="form-card">
+    <div class="brand-mark">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="9.5" stroke="#22d3ee" stroke-width="1.6" />
+        <path
+          d="M6 11h2.2l1.6-3.4 2.4 6.8 1.6-3.4H16"
+          stroke="#22d3ee"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+      </svg>
+      <span class="brand-word">FleetPulse</span>
+    </div>
+
+    <h1>Iniciar sesión</h1>
+    <p class="sub">Consola de despacho &middot; acceso operativo</p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <div class="field">
+        <label class="field-label" for="login-email">Correo electrónico</label>
+        <input id="login-email" class="input" type="email" formControlName="email" autocomplete="username" data-testid="login-email" />
+      </div>
+      <div class="field" style="margin-bottom: 6px">
+        <label class="field-label" for="login-password">Contraseña</label>
+        <input
+          id="login-password"
+          class="input"
+          type="password"
+          formControlName="password"
+          autocomplete="current-password"
+          data-testid="login-password"
+        />
+      </div>
+      <div class="row-between"><a href="#">¿Olvidaste tu contraseña?</a></div>
+
+      @if (loginError(); as error) {
+        <p class="form-error" data-testid="login-error">{{ error }}</p>
+      }
+
+      <button class="btn-primary" type="submit" [disabled]="!canSubmit()" data-testid="login-submit">
+        {{ loading() ? 'Iniciando sesión…' : 'Iniciar sesión' }}
+      </button>
+    </form>
+    <div class="foot-note">FleetPulse &middot; consola interna de despacho</div>
+  </div>
+</div>

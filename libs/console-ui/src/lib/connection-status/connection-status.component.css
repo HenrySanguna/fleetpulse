@@ -1,3 +1,30 @@
 :host {
   display: inline-block;
 }
+
+/* Overrides PrimeNG's default solid-fill tag look with the mockup's soft
+   tint badge -- these selectors target `p-tag`'s own host element (rendered
+   in this component's template), so they win on specificity without
+   `::ng-deep`. */
+p-tag {
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+p-tag.p-tag-success {
+  background: var(--fp-success-tint);
+  color: var(--fp-success-tint-text);
+}
+
+p-tag.p-tag-warn {
+  background: var(--fp-warning-tint);
+  color: var(--fp-warning-tint-text);
+}
+
+p-tag.p-tag-danger {
+  background: var(--fp-danger-tint);
+  color: var(--fp-danger-tint-text);
+}

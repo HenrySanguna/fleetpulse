@@ -1,24 +1,24 @@
 <div class="flex h-full">
-  <aside class="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-surface-200 p-4">
-    <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold">Geofences</h2>
+  <aside class="sidebar flex w-80 shrink-0 flex-col overflow-hidden">
+    <div class="sidebar-head flex items-center justify-between">
+      <h2 class="text-base font-bold" style="color: var(--fp-text)">Geofences</h2>
       <p-button data-testid="new-geofence" label="New" size="small" (onClick)="startNewGeofence()" />
     </div>
 
     @if (loading()) {
-      <p class="text-sm text-surface-500">Loading...</p>
+      <p class="px-4 pb-2 text-sm" style="color: var(--fp-text-faint)">Loading...</p>
     }
     @if (loadError()) {
-      <p class="text-sm text-red-600">{{ loadError() }}</p>
+      <p class="px-4 pb-2 text-sm text-red-600">{{ loadError() }}</p>
     }
 
-    <ul class="flex flex-col gap-1">
+    <ul class="geofence-list flex-1 overflow-y-auto">
       @for (geofence of geofences(); track geofence.id) {
         <li>
           <button
             type="button"
-            class="w-full rounded px-2 py-1 text-left hover:bg-surface-100"
-            [class.bg-surface-200]="selected()?.id === geofence.id"
+            class="geofence-row flex w-full items-center text-left"
+            [class.selected]="selected()?.id === geofence.id"
             [attr.data-testid]="'select-geofence-' + geofence.id"
             (click)="selectGeofence(geofence)"
           >
@@ -28,14 +28,14 @@
       }
     </ul>
 
-    <form [formGroup]="form" class="flex flex-col gap-3 border-t border-surface-200 pt-3">
-      <label class="flex flex-col gap-1 text-sm" for="geofence-name-input">
-        Name
-        <input id="geofence-name-input" pInputText formControlName="name" data-testid="geofence-name-input" />
+    <form [formGroup]="form" class="form flex flex-col gap-3.5">
+      <label class="flex flex-col gap-1.5 text-sm" for="geofence-name-input">
+        <span class="field-label">Name</span>
+        <input id="geofence-name-input" pInputText formControlName="name" data-testid="geofence-name-input" class="w-full" />
       </label>
 
-      <label class="flex flex-col gap-1 text-sm" for="geofence-rule-select">
-        Rule
+      <label class="flex flex-col gap-1.5 text-sm" for="geofence-rule-select">
+        <span class="field-label">Rule</span>
         <p-select
           inputId="geofence-rule-select"
           [options]="ruleOptions"
@@ -43,13 +43,14 @@
           optionValue="value"
           formControlName="rule"
           data-testid="geofence-rule-select"
+          styleClass="w-full"
         />
       </label>
 
       @if (form.controls.rule.value === ruleEnum.OnDwell) {
-        <label class="flex flex-col gap-1 text-sm" for="geofence-dwell-input">
-          Dwell seconds
-          <p-inputNumber inputId="geofence-dwell-input" formControlName="dwellSecs" [min]="1" data-testid="geofence-dwell-input" />
+        <label class="flex flex-col gap-1.5 text-sm" for="geofence-dwell-input">
+          <span class="field-label">Dwell seconds</span>
+          <p-inputNumber inputId="geofence-dwell-input" formControlName="dwellSecs" [min]="1" data-testid="geofence-dwell-input" styleClass="w-full" />
         </label>
       }
 
@@ -61,6 +62,7 @@
         data-testid="save-geofence"
         [label]="isEditing() ? 'Update geofence' : 'Save geofence'"
         [disabled]="!canSave()"
+        styleClass="w-full"
         (onClick)="save()"
       />
     </form>

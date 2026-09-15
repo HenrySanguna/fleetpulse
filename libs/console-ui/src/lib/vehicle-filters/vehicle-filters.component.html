@@ -1,13 +1,19 @@
-<div class="flex flex-col gap-3">
-  <input
-    pInputText
-    type="text"
-    class="w-full"
-    [value]="filters().search"
-    (input)="onSearchInput($event)"
-    placeholder="Search by label or vehicle ID"
-    aria-label="Search vehicles"
-  />
+<div class="flex flex-col gap-2.5">
+  <div class="search-wrap">
+    <svg class="search-icon" width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M15.5 15.5l-3-3" />
+    </svg>
+    <input
+      pInputText
+      type="text"
+      class="search-input w-full"
+      [value]="filters().search"
+      (input)="onSearchInput($event)"
+      placeholder="Search by label or vehicle ID"
+      aria-label="Search vehicles"
+    />
+  </div>
 
   <p-select
     [options]="motionStateOptions"
@@ -20,7 +26,7 @@
     aria-label="Filter by motion state"
   />
 
-  <label class="flex items-center gap-2" for="online-only-filter">
+  <label class="flex items-center gap-2 online-only-label" for="online-only-filter">
     <p-checkbox
       [binary]="true"
       [ngModel]="filters().onlineOnly"

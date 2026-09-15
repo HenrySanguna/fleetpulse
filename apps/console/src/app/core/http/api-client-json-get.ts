@@ -1,5 +1,6 @@
 import type { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
+import { map } from 'rxjs';
 import type { Configuration } from '@fleetpulse/api-client';
 
 // Gap discovered in WU6 while writing E2E tests 6.5/6.6: every
@@ -57,4 +58,17 @@ export function postJson<T>(http: HttpClient, configuration: Configuration, path
 
 export function putJson<T>(http: HttpClient, configuration: Configuration, path: string, body: unknown): Observable<T> {
   return http.put<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
+}
+
+// `/login` and `/logout` (Task 5.4/auth) aren't part of the OpenAPI-generated
+// surface at all -- they're Spring Security's own default endpoints, not
+// backed by a generated *ControllerService -- so this isn't the Accept-header
+// workaround above, it's a different gap: both take a form-urlencoded body
+// (not JSON) and reply with an empty 200 body, which HttpClient's default
+// `responseType: 'json'` would throw a parse error on. `responseType: 'text'`
+// avoids that; the resolved text (always empty on success) is discarded.
+export function postForm(http: HttpClient, configuration: Configuration, path: string, body: URLSearchParams): Observable<void> {
+  return http
+    .post(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials, responseType: 'text' })
+    .pipe(map(() => undefined));
 }
