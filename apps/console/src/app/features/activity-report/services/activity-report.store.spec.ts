@@ -88,4 +88,31 @@ describe('ActivityReportStore', () => {
 
     expect(activityReportService.getReport).not.toHaveBeenCalled();
   });
+
+  // Regression: loadVehicles() used to only auto-select+load a report the
+  // very first time (`!store.selectedVehicleId()`), so revisiting the page
+  // re-fetched the vehicle list but silently kept showing a stale report.
+  it('loadVehicles() reloads the already-selected vehicle\'s report on a second call', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockImplementation((vehicleId: string) => of(reportByVehicle[vehicleId]));
+    store.loadVehicles();
+    expect(activityReportService.getReport).toHaveBeenCalledTimes(1);
+
+    store.loadVehicles();
+
+    expect(store.selectedVehicleId()).toBe('VH-1042');
+    expect(activityReportService.getReport).toHaveBeenCalledTimes(2);
+  });
+
+  it('reset() restores the initial state', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockReturnValue(of(reportByVehicle['VH-1042']));
+    store.loadVehicles();
+
+    store.reset();
+
+    expect(store.vehicles()).toEqual([]);
+    expect(store.selectedVehicleId()).toBeUndefined();
+    expect(store.report()).toBeUndefined();
+  });
 });

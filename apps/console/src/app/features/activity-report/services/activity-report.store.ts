@@ -50,19 +50,26 @@ export const ActivityReportStore = signalStore(
     }
 
     return {
+      // Always reloads the report for the resolved vehicle -- previously
+      // only did so `!store.selectedVehicleId()`, so revisiting this page
+      // (selectedVehicleId already set from a prior visit) refreshed the
+      // vehicle list but silently kept showing the stale report.
       loadVehicles(): void {
+        patchState(store, { loading: true, error: undefined });
         activityReportService.listVehicles().subscribe({
           next: (vehicles) => {
             patchState(store, { vehicles });
-            const firstVehicleId = vehicles[0]?.id;
-            if (firstVehicleId && !store.selectedVehicleId()) {
-              patchState(store, { selectedVehicleId: firstVehicleId });
+            const vehicleId = store.selectedVehicleId() ?? vehicles[0]?.id;
+            if (vehicleId) {
+              patchState(store, { selectedVehicleId: vehicleId });
               loadReport();
+            } else {
+              patchState(store, { loading: false });
             }
           },
           error: (error: unknown) => {
             console.error('ActivityReportStore: failed to load the vehicle list', error);
-            patchState(store, { error: 'No se pudo cargar la lista de vehículos' });
+            patchState(store, { loading: false, error: 'No se pudo cargar la lista de vehículos' });
           },
         });
       },
@@ -73,6 +80,10 @@ export const ActivityReportStore = signalStore(
       },
 
       loadReport,
+
+      reset(): void {
+        patchState(store, INITIAL_STATE);
+      },
     };
   }),
 );
