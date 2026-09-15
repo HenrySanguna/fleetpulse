@@ -1,4 +1,5 @@
 import { inject } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { type Observable, catchError, map, of, shareReplay } from 'rxjs';
 import type { DispatcherSelfView } from '@fleetpulse/api-client';
@@ -45,8 +46,18 @@ export const AuthStore = signalStore(
               patchState(store, { dispatcher, checked: true });
               return true;
             }),
-            catchError(() => {
-              patchState(store, { dispatcher: null, checked: true });
+            // A real 401 means "not signed in" -- caching that is correct.
+            // Any OTHER failure (network blip, 5xx, timeout) is NOT proof
+            // the dispatcher is logged out; caching `checked: true` for
+            // those permanently locks a still-valid session out until a
+            // full page reload, since `checked()` short-circuits every
+            // later call. Leaving `checked: false` lets the next
+            // `ensureChecked()` call (e.g. the next route activation)
+            // retry `me()` for real.
+            catchError((error: unknown) => {
+              const isUnauthorized = error instanceof HttpErrorResponse && error.status === 401;
+              patchState(store, { dispatcher: null, checked: isUnauthorized });
+              inFlight = undefined;
               return of(false);
             }),
             shareReplay(1),
