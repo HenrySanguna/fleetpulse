@@ -15,3 +15,31 @@
    `--p-primary-color`) onto Tailwind utility classes (e.g. `bg-primary-100`),
    so the two systems share one palette. */
 @plugin 'tailwindcss-primeui';
+
+/* Design tokens from the Claude Design canvas mockups (Main/Login/etc.
+   .dc.html under the design scratchpad) -- short `--fp-` prefix so they
+   read as this app's own tokens, distinct from PrimeNG's `--p-` and
+   Tailwind's own CSS variables. */
+:root {
+  --fp-bg: #f4f6f8;
+  --fp-surface: #ffffff;
+  --fp-border: #dde3e8;
+  --fp-text: #16212b;
+  --fp-text-muted: #5b6b78;
+  --fp-text-faint: #8a98a3;
+
+  --fp-success: #22c55e;
+  --fp-success-tint: #dcfce7;
+  --fp-success-tint-text: #15803d;
+  --fp-warning: #eab308;
+  --fp-warning-tint: #fef3c7;
+  --fp-warning-tint-text: #92400e;
+  --fp-danger-tint: #fee2e2;
+  --fp-danger-tint-text: #b91c1c;
+  --fp-neutral-tint: #e2e8f0;
+  --fp-neutral-tint-text: #475569;
+}
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}

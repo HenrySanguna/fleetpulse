@@ -1,5 +1,6 @@
 import type { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
+import { map } from 'rxjs';
 import type { Configuration } from '@fleetpulse/api-client';
 
 // Gap discovered in WU6 while writing E2E tests 6.5/6.6: every
@@ -44,4 +45,30 @@ import type { Configuration } from '@fleetpulse/api-client';
 // correct 'json'.
 export function getJson<T>(http: HttpClient, configuration: Configuration, path: string): Observable<T> {
   return http.get<T>(`${configuration.basePath}${path}`, { withCredentials: configuration.withCredentials });
+}
+
+// Same gap as getJson() above, confirmed again while wiring WU7's
+// GeofenceService: GeofenceControllerService.create()/update() (generated)
+// also default their Accept header to '*/*', so POST/PUT hit the identical
+// responseType:'blob' misclassification -- not just the GET methods the
+// original comment called out. Bypasses the generated method the same way.
+export function postJson<T>(http: HttpClient, configuration: Configuration, path: string, body: unknown): Observable<T> {
+  return http.post<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
+}
+
+export function putJson<T>(http: HttpClient, configuration: Configuration, path: string, body: unknown): Observable<T> {
+  return http.put<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
+}
+
+// `/login` and `/logout` (Task 5.4/auth) aren't part of the OpenAPI-generated
+// surface at all -- they're Spring Security's own default endpoints, not
+// backed by a generated *ControllerService -- so this isn't the Accept-header
+// workaround above, it's a different gap: both take a form-urlencoded body
+// (not JSON) and reply with an empty 200 body, which HttpClient's default
+// `responseType: 'json'` would throw a parse error on. `responseType: 'text'`
+// avoids that; the resolved text (always empty on success) is discarded.
+export function postForm(http: HttpClient, configuration: Configuration, path: string, body: URLSearchParams): Observable<void> {
+  return http
+    .post(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials, responseType: 'text' })
+    .pipe(map(() => undefined));
 }
