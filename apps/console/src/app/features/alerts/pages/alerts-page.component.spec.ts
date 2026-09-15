@@ -5,6 +5,10 @@ import type { Alert } from '../models/alert.model';
 import { AlertsService } from '../services/alerts.service';
 import { AlertsPageComponent } from './alerts-page.component';
 
+const NOW = Date.now();
+// Explicit, distinct, newest-first timestamps -- deterministic input for the
+// day-group sort, instead of three `new Date()` calls that could tie or
+// drift by a few ms depending on how fast the test runs.
 const ALERTS: Alert[] = [
   {
     id: 'a1',
@@ -12,7 +16,7 @@ const ALERTS: Alert[] = [
     vehicleLabel: 'Camión 04',
     type: 'geofence_enter',
     detail: 'Entró en la geocerca "Puerto de Valencia"',
-    occurredAt: new Date().toISOString(),
+    occurredAt: new Date(NOW).toISOString(),
     acknowledged: false,
   },
   {
@@ -21,7 +25,7 @@ const ALERTS: Alert[] = [
     vehicleLabel: 'Furgoneta 02',
     type: 'speeding',
     detail: '92 km/h en una zona con límite de 60 km/h',
-    occurredAt: new Date().toISOString(),
+    occurredAt: new Date(NOW - 60_000).toISOString(),
     acknowledged: false,
   },
   {
@@ -30,7 +34,7 @@ const ALERTS: Alert[] = [
     vehicleLabel: 'Camión 11',
     type: 'excessive_idle',
     detail: '22 min detenido con el motor en marcha',
-    occurredAt: new Date().toISOString(),
+    occurredAt: new Date(NOW - 120_000).toISOString(),
     acknowledged: true,
   },
 ];
@@ -91,6 +95,26 @@ describe('AlertsPageComponent', () => {
     fixture.detectChanges();
 
     expect(cardIds(fixture)).toEqual(['alert-a2']);
+  });
+
+  it('sorts same-day alerts newest-first regardless of the order the service returns them in', () => {
+    alertsService.list.mockReturnValue(of([...ALERTS].reverse()));
+
+    const fixture = createFixture();
+
+    expect(cardIds(fixture)).toEqual(['alert-a1', 'alert-a2', 'alert-a3']);
+  });
+
+  it('marks the active filter chip with aria-pressed', () => {
+    const fixture = createFixture();
+
+    const chip = fixture.debugElement.query(By.css('[data-testid="alert-filter-speeding"]'));
+    expect(chip.nativeElement.getAttribute('aria-pressed')).toBe('false');
+
+    chip.triggerEventHandler('click', undefined);
+    fixture.detectChanges();
+
+    expect(chip.nativeElement.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('combines the active filter chip and the search query', () => {

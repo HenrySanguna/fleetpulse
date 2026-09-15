@@ -4,7 +4,13 @@
   </div>
 
   <div class="filter-bar">
-    <select class="select" data-testid="activity-vehicle-select" [value]="selectedVehicleId()" (change)="onVehicleChange($event)">
+    <select
+      class="select"
+      data-testid="activity-vehicle-select"
+      aria-label="Vehículo"
+      [value]="selectedVehicleId()"
+      (change)="onVehicleChange($event)"
+    >
       @for (vehicle of vehicles(); track vehicle.id) {
         <option [value]="vehicle.id">{{ vehicle.label }} &middot; {{ vehicle.id }}</option>
       }

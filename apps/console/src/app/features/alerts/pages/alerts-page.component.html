@@ -12,6 +12,7 @@
         type="button"
         class="filter-chip"
         [class.on]="typeFilter() === chip.value"
+        [attr.aria-pressed]="typeFilter() === chip.value"
         [attr.data-testid]="'alert-filter-' + chip.value"
         (click)="setTypeFilter(chip.value)"
       >
@@ -24,7 +25,14 @@
         <circle cx="8" cy="8" r="5.5" />
         <path d="M15.5 15.5l-3-3" />
       </svg>
-      <input class="search-input" type="text" placeholder="Buscar vehículo" data-testid="alert-search" (input)="onSearchInput($event)" />
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Buscar vehículo"
+        aria-label="Buscar vehículo"
+        data-testid="alert-search"
+        (input)="onSearchInput($event)"
+      />
     </div>
   </div>
 

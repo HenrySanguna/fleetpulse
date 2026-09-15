@@ -69,7 +69,14 @@ function groupByDay(alerts: readonly Alert[]): AlertDayGroup[] {
   }
   return [...groups.entries()]
     .sort(([a], [b]) => (a < b ? 1 : -1))
-    .map(([key, dayAlerts]) => ({ key, label: dayLabel(dayAlerts[0].occurredAt), alerts: dayAlerts }));
+    .map(([key, dayAlerts]) => ({
+      key,
+      label: dayLabel(dayAlerts[0].occurredAt),
+      // Newest-first within the day -- today's mock data happens to already
+      // arrive that way, but nothing enforced it, so a real backend
+      // response in any other order would render same-day cards scrambled.
+      alerts: [...dayAlerts].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)),
+    }));
 }
 
 @Component({

@@ -49,7 +49,13 @@ function buildDateRangeLabel(): string {
   const start = new Date(end);
   start.setDate(end.getDate() - 6);
   const endLabel = end.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${start.getDate()} – ${endLabel}`;
+  // A bare day-of-month for `start` (e.g. "28 – 3 sept 2026") reads as if
+  // both dates share September when the 7-day window crosses a month
+  // boundary -- only safe to drop the month when start and end are
+  // actually in the same one.
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const startLabel = sameMonth ? String(start.getDate()) : start.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  return `${startLabel} – ${endLabel}`;
 }
 
 @Component({

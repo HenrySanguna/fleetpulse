@@ -60,6 +60,13 @@ describe('ActivityReportPageComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('[data-testid="activity-trip-row"]').length).toBe(2);
   });
 
+  it('gives the vehicle selector an accessible name', () => {
+    const fixture = createFixture();
+
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('[data-testid="activity-vehicle-select"]');
+    expect(select.getAttribute('aria-label')).toBeTruthy();
+  });
+
   it('switching the vehicle selector changes the rendered stat values', () => {
     const fixture = createFixture();
 
@@ -74,6 +81,19 @@ describe('ActivityReportPageComponent', () => {
     expect(statValue(fixture, 'stat-idle')).toContain('2h 48');
     expect(statValue(fixture, 'stat-speed')).toContain('33 / 71');
     expect(fixture.nativeElement.querySelectorAll('[data-testid="activity-trip-row"]').length).toBe(1);
+  });
+
+  it('includes the month on both ends of the date-range label when the 7-day window crosses a month boundary', () => {
+    // Sept 3 minus 6 days lands in August -- a bare "28" for the start
+    // would misleadingly read as August 28th being inside September.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 3)); // month is 0-indexed: 8 = September
+    const fixture = createFixture();
+
+    const label: HTMLElement = fixture.nativeElement.querySelector('.date-display');
+    expect(label.textContent).toMatch(/ago\.?.*–.*sept\.?/);
+
+    vi.useRealTimers();
   });
 
   it('clicking "Generar informe" re-triggers loading the selected vehicle\'s report', () => {
