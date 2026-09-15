@@ -33,18 +33,30 @@ export const ActivityReportStore = signalStore(
   })),
   withMethods((store) => {
     const activityReportService = inject(ActivityReportService);
+    // Guards against an out-of-order response: switching vehicle A -> B
+    // before A's request resolves must never let A's late response
+    // overwrite B's already-rendered report. Each call captures its own id
+    // and only patches state if it's still the most recent call.
+    let latestRequestId = 0;
 
     function loadReport(): void {
       const vehicleId = store.selectedVehicleId();
       if (!vehicleId) {
         return;
       }
+      const requestId = ++latestRequestId;
       patchState(store, { loading: true, error: undefined });
       activityReportService.getReport(vehicleId).subscribe({
-        next: (report) => patchState(store, { report, loading: false }),
+        next: (report) => {
+          if (requestId === latestRequestId) {
+            patchState(store, { report, loading: false });
+          }
+        },
         error: (error: unknown) => {
           console.error('ActivityReportStore: failed to load the activity report', error);
-          patchState(store, { loading: false, error: 'No se pudo generar el informe de actividad' });
+          if (requestId === latestRequestId) {
+            patchState(store, { loading: false, error: 'No se pudo generar el informe de actividad' });
+          }
         },
       });
     }

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import type { ActivityReport, ActivityVehicleOption } from '../models/activity-report.model';
 import { ActivityReportService } from './activity-report.service';
 import { ActivityReportStore } from './activity-report.store';
@@ -102,6 +102,27 @@ describe('ActivityReportStore', () => {
 
     expect(store.selectedVehicleId()).toBe('VH-1042');
     expect(activityReportService.getReport).toHaveBeenCalledTimes(2);
+  });
+
+  // Regression: selectVehicle()/loadReport() used to subscribe per call with
+  // no cancellation, so an out-of-order response could overwrite the
+  // already-rendered, more recent selection with stale data.
+  it('ignores a stale, out-of-order response from a superseded selectVehicle() call', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    const firstRequest = new Subject<ActivityReport>();
+    const secondRequest = new Subject<ActivityReport>();
+    activityReportService.getReport.mockReturnValueOnce(of(reportByVehicle['VH-1042'])).mockReturnValueOnce(firstRequest).mockReturnValueOnce(secondRequest);
+    store.loadVehicles();
+
+    store.selectVehicle('VH-0892');
+    store.selectVehicle('VH-1042');
+    // The second (newer) request resolves first; the first (now-stale) one
+    // resolves after it.
+    secondRequest.next(reportByVehicle['VH-1042']);
+    firstRequest.next(reportByVehicle['VH-0892']);
+
+    expect(store.selectedVehicleId()).toBe('VH-1042');
+    expect(store.summary()).toEqual(reportByVehicle['VH-1042'].summary);
   });
 
   it('reset() restores the initial state', () => {
