@@ -15,8 +15,8 @@ describe('authGuard', () => {
     });
   });
 
-  function runGuard(): Observable<boolean | UrlTree> {
-    return TestBed.runInInjectionContext(() => authGuard({} as never, { url: '/geofences' } as never)) as Observable<boolean | UrlTree>;
+  function runGuard(url = '/geofences'): Observable<boolean | UrlTree> {
+    return TestBed.runInInjectionContext(() => authGuard({} as never, { url } as never)) as Observable<boolean | UrlTree>;
   }
 
   it('allows activation when ensureChecked() resolves true', () => {
@@ -28,14 +28,16 @@ describe('authGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('redirects to /login when ensureChecked() resolves false', () => {
+  it('redirects to /login with the requested URL as returnUrl when ensureChecked() resolves false', () => {
     authStore.ensureChecked.mockReturnValue(of(false));
     const router = TestBed.inject(Router);
 
     let result: boolean | UrlTree | undefined;
-    runGuard().subscribe((value) => (result = value));
+    runGuard('/alerts').subscribe((value) => (result = value));
 
     expect(result).not.toBe(true);
-    expect((result as UrlTree).toString()).toBe(router.createUrlTree(['/login']).toString());
+    expect((result as UrlTree).toString()).toBe(
+      router.createUrlTree(['/login'], { queryParams: { returnUrl: '/alerts' } }).toString(),
+    );
   });
 });

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AuthStore } from '../../../core/auth/auth.store';
 
@@ -25,6 +25,7 @@ export class LoginPageComponent {
   private readonly authService = inject(AuthService);
   private readonly authStore = inject(AuthStore);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly loading = signal(false);
   protected readonly loginError = signal<string | undefined>(undefined);
@@ -67,12 +68,22 @@ export class LoginPageComponent {
       next: (dispatcher) => {
         this.authStore.setDispatcher(dispatcher);
         this.loading.set(false);
-        this.router.navigateByUrl('/');
+        this.router.navigateByUrl(this.resolveReturnUrl());
       },
       error: () => {
         this.loading.set(false);
         this.loginError.set('No se pudo iniciar la sesión. Inténtalo de nuevo.');
       },
     });
+  }
+
+  // authGuard records the originally requested URL as ?returnUrl so a deep
+  // link (e.g. a bookmark to /alerts) survives the login redirect instead of
+  // always landing on the live map. Only a same-app relative path is ever
+  // trusted -- `//evil.com` parses as a protocol-relative URL, not a path,
+  // so it's rejected alongside any absolute URL to avoid an open redirect.
+  private resolveReturnUrl(): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/';
   }
 }

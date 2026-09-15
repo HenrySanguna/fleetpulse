@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { Subject, of, throwError } from 'rxjs';
 import type { DispatcherSelfView } from '@fleetpulse/api-client';
@@ -27,18 +27,24 @@ describe('LoginPageComponent', () => {
   let authService: { login: ReturnType<typeof vi.fn>; me: ReturnType<typeof vi.fn> };
   let authStore: { setDispatcher: ReturnType<typeof vi.fn> };
   let router: Router;
+  let returnUrl: string | null;
 
   const dispatcher: DispatcherSelfView = { id: 'd1', organizationId: 'org-1', email: 'despachador@example.com', role: 'DISPATCHER' };
 
   beforeEach(() => {
     authService = { login: vi.fn(), me: vi.fn() };
     authStore = { setDispatcher: vi.fn() };
+    returnUrl = null;
 
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: authService },
         { provide: AuthStore, useValue: authStore },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: { get: () => returnUrl } } },
+        },
       ],
     });
 
@@ -87,6 +93,32 @@ describe('LoginPageComponent', () => {
 
     expect(authService.login).toHaveBeenCalledWith('despachador@example.com', 's3cret');
     expect(authStore.setDispatcher).toHaveBeenCalledWith(dispatcher);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
+  });
+
+  it('on submit: navigates to ?returnUrl when one was recorded by the guard', () => {
+    returnUrl = '/alerts';
+    authService.login.mockReturnValue(of(undefined));
+    authService.me.mockReturnValue(of(dispatcher));
+    const fixture = createFixture();
+    setValue(fixture, 'login-email', 'despachador@example.com');
+    setValue(fixture, 'login-password', 's3cret');
+
+    submit(fixture);
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/alerts');
+  });
+
+  it('on submit: ignores a returnUrl that is not a same-app relative path (open-redirect guard)', () => {
+    returnUrl = '//evil.example.com';
+    authService.login.mockReturnValue(of(undefined));
+    authService.me.mockReturnValue(of(dispatcher));
+    const fixture = createFixture();
+    setValue(fixture, 'login-email', 'despachador@example.com');
+    setValue(fixture, 'login-password', 's3cret');
+
+    submit(fixture);
+
     expect(router.navigateByUrl).toHaveBeenCalledWith('/');
   });
 
