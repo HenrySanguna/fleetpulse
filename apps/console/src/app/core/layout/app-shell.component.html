@@ -1,0 +1,81 @@
+<div class="flex h-screen">
+  <nav class="rail">
+    <div class="rail-brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="9.5" stroke="#2563eb" stroke-width="1.6" />
+        <path
+          d="M6 11h2.2l1.6-3.4 2.4 6.8 1.6-3.4H16"
+          stroke="#2563eb"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+      </svg>
+      <span class="rail-brand-word">FleetPulse</span>
+    </div>
+
+    <div class="rail-nav">
+      <a
+        routerLink="/"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        class="rail-item"
+        data-testid="nav-live-map"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 2c-3.3 0-6 2.6-6 6 0 4.5 6 10 6 10s6-5.5 6-10c0-3.4-2.7-6-6-6z" />
+          <circle cx="10" cy="8" r="2" />
+        </svg>
+        Mapa en vivo
+      </a>
+      <a routerLink="/geofences" routerLinkActive="active" class="rail-item" data-testid="nav-geofences">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 2.5 17 7v6l-7 4.5L3 13V7z" />
+        </svg>
+        Geocercas
+      </a>
+      <a routerLink="/alerts" routerLinkActive="active" class="rail-item" data-testid="nav-alerts">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 8a4 4 0 0 1 8 0c0 3 1.2 4.5 1.2 4.5H4.8S6 11 6 8z" />
+          <path d="M8.2 15a1.8 1.8 0 0 0 3.6 0" />
+        </svg>
+        Alertas
+      </a>
+      <a routerLink="/activity" routerLinkActive="active" class="rail-item" data-testid="nav-activity">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <rect x="3" y="9" width="3.4" height="8" rx="1" />
+          <rect x="8.3" y="4" width="3.4" height="13" rx="1" />
+          <rect x="13.6" y="7" width="3.4" height="10" rx="1" />
+        </svg>
+        Actividad
+      </a>
+    </div>
+
+    <div class="rail-foot">
+      <div class="avatar">{{ initials() }}</div>
+      <div class="rail-foot-text">
+        <span class="rail-foot-email" data-testid="rail-foot-email">{{ dispatcher()?.email }}</span>
+        <span class="rail-foot-role" data-testid="rail-foot-role">{{ roleLabel() }}</span>
+      </div>
+      <button
+        type="button"
+        class="rail-foot-logout"
+        data-testid="rail-logout"
+        title="Cerrar sesión"
+        aria-label="Cerrar sesión"
+        (click)="logout()"
+      >
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3H4.5A1.5 1.5 0 0 0 3 4.5v11A1.5 1.5 0 0 0 4.5 17H8" />
+          <path d="M13 14l4-4-4-4" />
+          <path d="M17 10H7.5" />
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <div class="flex-1 overflow-hidden">
+    <router-outlet></router-outlet>
+  </div>
+</div>

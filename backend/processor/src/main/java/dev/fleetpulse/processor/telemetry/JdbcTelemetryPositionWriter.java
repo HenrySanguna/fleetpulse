@@ -1,6 +1,7 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +54,23 @@ import java.util.UUID;
 // duplicate the guard's comparison to decide whether to write, only to
 // correctly chain multiple same-vehicle messages within one flush batch
 // (VehicleMotionStreakTracker's own responsibility, see its class comment).
+//
+// Task 2.4 (WU4, tasks.md forecast's architecture decision): geofence
+// evaluation is wired into this SAME guarded write path, not a separate
+// consumer or a second guard. selectGeofenceEligibleMessages() below
+// mirrors VehicleMotionStreakTracker's own isNewer()/running-map chaining
+// exactly -- same comparison (message.recordedAt().isAfter(known)), same
+// "no known state or null recordedAt counts as newer" rule -- computed from
+// the SAME knownMotionStates snapshot already loaded for motion detection,
+// so this costs zero extra queries. Deliberately NOT sourced from
+// UPSERT_VEHICLE_STATE_SQL's own batchUpdate() return value (an int[] of
+// per-statement affected-row counts is available there too): the JDBC
+// driver is free to report Statement.SUCCESS_NO_INFO for a batched
+// statement instead of an exact 0/1 count depending on driver/batching mode,
+// which would silently misclassify an accepted write as stale. Mirroring
+// VehicleMotionStreakTracker's already-proven comparison in Java sidesteps
+// that risk entirely and stays consistent with "the same pattern task 4.2
+// already established" the forecast calls for.
 @Component
 public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
@@ -83,10 +102,14 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
     private final JdbcTemplate jdbcTemplate;
     private final VehicleMotionStreakTracker motionStreakTracker;
+    private final GeofenceRuleDispatcher geofenceRuleDispatcher;
 
-    public JdbcTelemetryPositionWriter(JdbcTemplate jdbcTemplate, VehicleMotionStreakTracker motionStreakTracker) {
+    public JdbcTelemetryPositionWriter(
+        JdbcTemplate jdbcTemplate, VehicleMotionStreakTracker motionStreakTracker, GeofenceRuleDispatcher geofenceRuleDispatcher
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.motionStreakTracker = motionStreakTracker;
+        this.geofenceRuleDispatcher = geofenceRuleDispatcher;
     }
 
     @Override
@@ -116,6 +139,7 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
         Map<UUID, VehicleMotionSnapshot> knownMotionStates = loadKnownMotionStates(messages);
         List<VehicleMotionUpdate> motionUpdates = motionStreakTracker.computeUpdates(knownMotionStates, messages);
+        List<TelemetryMessage> geofenceEligibleMessages = selectGeofenceEligibleMessages(knownMotionStates, messages);
 
         jdbcTemplate.batchUpdate(UPSERT_VEHICLE_STATE_SQL, new BatchPreparedStatementSetter() {
             @Override
@@ -136,6 +160,34 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
                 return messages.size();
             }
         });
+
+        geofenceRuleDispatcher.evaluateAndDispatch(geofenceEligibleMessages);
+    }
+
+    // See this class's own comment above for why this mirrors
+    // VehicleMotionStreakTracker.isNewer()'s comparison instead of reading
+    // UPSERT_VEHICLE_STATE_SQL's batchUpdate() return counts. running is
+    // seeded from knownMotionStates (the state BEFORE this batch) and
+    // chained forward per message, exactly like
+    // VehicleMotionStreakTracker.computeUpdates()'s own running map, so a
+    // second eligible message for the same vehicle within this batch is
+    // correctly compared against the first message's recordedAt, not
+    // against stale pre-batch state.
+    private static List<TelemetryMessage> selectGeofenceEligibleMessages(
+        Map<UUID, VehicleMotionSnapshot> knownMotionStates, List<TelemetryMessage> messages
+    ) {
+        Map<UUID, Instant> lastKnownRecordedAt = new HashMap<>();
+        knownMotionStates.forEach((vehicleId, snapshot) -> lastKnownRecordedAt.put(vehicleId, snapshot.recordedAt()));
+
+        List<TelemetryMessage> eligible = new ArrayList<>();
+        for (TelemetryMessage message : messages) {
+            Instant known = lastKnownRecordedAt.get(message.vehicleId());
+            if (known == null || message.recordedAt().isAfter(known)) {
+                eligible.add(message);
+                lastKnownRecordedAt.put(message.vehicleId(), message.recordedAt());
+            }
+        }
+        return eligible;
     }
 
     // One upfront lookup per flush batch for every distinct vehicle involved,

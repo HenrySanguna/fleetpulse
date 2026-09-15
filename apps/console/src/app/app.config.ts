@@ -7,8 +7,35 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { provideApi } from '@fleetpulse/api-client';
 import { providePrimeNG } from 'primeng/config';
+import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 import { appRoutes } from './app.routes';
+
+// Design tokens: the mockups' primary `#2563eb` is exactly Tailwind's
+// `blue-600`, and `@primeuix/themes/aura/base`'s own primitive `blue` scale
+// (confirmed in node_modules) is byte-for-byte Tailwind's blue ramp -- so
+// this re-points Aura's semantic `primary` color scale (default: emerald) at
+// that existing primitive palette via token references, rather than
+// hand-copying hex values. `color`/`hoverColor`/`activeColor`/
+// `contrastColor` all derive from `{primary.*}` already in Aura's base
+// preset, so they follow automatically.
+const FleetPulsePreset = definePreset(Aura, {
+  semantic: {
+    primary: {
+      50: '{blue.50}',
+      100: '{blue.100}',
+      200: '{blue.200}',
+      300: '{blue.300}',
+      400: '{blue.400}',
+      500: '{blue.500}',
+      600: '{blue.600}',
+      700: '{blue.700}',
+      800: '{blue.800}',
+      900: '{blue.900}',
+      950: '{blue.950}',
+    },
+  },
+});
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -22,6 +49,6 @@ export const appConfig: ApplicationConfig = {
     // Task 5.1: `libs/console-ui`'s components are built on PrimeNG. The
     // `dark mode via CSS class` selector is left at its default (`.p-dark`)
     // -- no dark-mode toggle exists yet, out of scope for this change.
-    providePrimeNG({ theme: { preset: Aura } }),
+    providePrimeNG({ theme: { preset: FleetPulsePreset } }),
   ],
 };

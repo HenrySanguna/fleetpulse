@@ -1,10 +1,16 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryBufferProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
+import dev.fleetpulse.processor.geofencing.GeofenceAlertPublisher;
+import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
+import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
+import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
+import dev.fleetpulse.processor.geofencing.JdbcVehicleFenceStateWriter;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -175,6 +181,14 @@ class TelemetryEndToEndIngestTest {
         ctx.registerBean(FleetpulseTelemetryImplausibilityProperties.class, () -> new FleetpulseTelemetryImplausibilityProperties(300.0));
         ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(bufferMaxSize, flushInterval));
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
+        // Task 2.4/WU4: this test proves the telemetry pipeline itself, not
+        // geofencing (GeofenceEvaluatorTest/GeofenceRuleEngineTest/
+        // GeofenceAlertEndToEndTest already cover that) -- no geofences are
+        // ever seeded here, so a no-op publisher is sufficient; the real
+        // GeofenceEvaluator/writers still run against the same database to
+        // prove the wiring itself does not break ordinary telemetry ingest.
+        ctx.registerBean(FleetpulseGeofencingProperties.class, () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0));
+        ctx.registerBean(GeofenceAlertPublisher.class, () -> alert -> { });
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -183,8 +197,9 @@ class TelemetryEndToEndIngestTest {
         // the real app gets this for free from Boot's IntegrationAutoConfiguration.
         ctx.register(
             IntegrationTestConfig.class, TelemetryMqttConfig.class, TelemetryPayloadParser.class,
-            TelemetryImplausibilityFilter.class, VehicleMotionStreakTracker.class, JdbcTelemetryPositionWriter.class,
-            TelemetryPositionBuffer.class, TelemetryMessageListener.class
+            TelemetryImplausibilityFilter.class, VehicleMotionStreakTracker.class,
+            GeofenceEvaluator.class, JdbcVehicleFenceStateWriter.class, JdbcGeofenceAlertWriter.class, GeofenceRuleDispatcher.class,
+            JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
         return ctx;

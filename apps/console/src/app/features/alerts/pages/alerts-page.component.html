@@ -1,0 +1,109 @@
+<div class="alerts-page flex h-full flex-col overflow-hidden">
+  <div class="page-head">
+    <div>
+      <h1>Alertas</h1>
+      <p class="page-sub">{{ unacknowledgedCount() }} sin reconocer de {{ totalCount() }} en las últimas 24 horas</p>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    @for (chip of filterChips; track chip.value) {
+      <button
+        type="button"
+        class="filter-chip"
+        [class.on]="typeFilter() === chip.value"
+        [attr.aria-pressed]="typeFilter() === chip.value"
+        [attr.data-testid]="'alert-filter-' + chip.value"
+        (click)="setTypeFilter(chip.value)"
+      >
+        {{ chip.label }}
+      </button>
+    }
+    <span class="filter-spacer"></span>
+    <div class="search-wrap">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <circle cx="8" cy="8" r="5.5" />
+        <path d="M15.5 15.5l-3-3" />
+      </svg>
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Buscar vehículo"
+        aria-label="Buscar vehículo"
+        data-testid="alert-search"
+        (input)="onSearchInput($event)"
+      />
+    </div>
+  </div>
+
+  <div class="list">
+    @if (loading()) {
+      <p class="status-text">Cargando alertas...</p>
+    }
+    @if (loadError()) {
+      <p class="status-text status-error">{{ loadError() }}</p>
+    }
+    @if (!loading() && !loadError() && dayGroups().length === 0) {
+      <p class="status-text">No hay alertas que coincidan con el filtro.</p>
+    }
+
+    @for (group of dayGroups(); track group.key) {
+      <div class="day-label">{{ group.label }}</div>
+
+      @for (alert of group.alerts; track alert.id) {
+        <div class="alert-card" [attr.data-testid]="'alert-' + alert.id">
+          <div [class]="'alert-icon ic-' + severityOf(alert.type)">
+            @switch (alert.type) {
+              @case ('geofence_enter') {
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 2.5 17 7v6l-7 4.5L3 13V7z" />
+                </svg>
+              }
+              @case ('geofence_exit') {
+                <!-- Same arrow-out glyph as the rail's "Cerrar sesión" control
+                     (app-shell.component.html) -- reused here so "exited"
+                     reads consistently across the app, and stays visually
+                     distinct from geofence_enter's hexagon (was previously
+                     an identical, indistinguishable copy). -->
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H4.5A1.5 1.5 0 0 0 3 4.5v11A1.5 1.5 0 0 0 4.5 17H8" />
+                  <path d="M13 14l4-4-4-4" />
+                  <path d="M17 10H7.5" />
+                </svg>
+              }
+              @case ('speeding') {
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 13a7 7 0 1 1 14 0" />
+                  <path d="M10 13l4-4" />
+                  <circle cx="10" cy="13" r="1" fill="currentColor" stroke="none" />
+                </svg>
+              }
+              @case ('excessive_idle') {
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="10" cy="10" r="7" />
+                  <path d="M10 6v4l3 2" />
+                </svg>
+              }
+              @case ('offline') {
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 17h.6M7 17v-3M11 17v-6M15 17v-9" />
+                  <path d="M3 3l14 14" />
+                </svg>
+              }
+            }
+          </div>
+          <div class="alert-body">
+            <div class="alert-title">{{ alert.vehicleLabel }} &middot; {{ alert.vehicleId }}</div>
+            <div class="alert-detail">{{ alert.detail }}</div>
+          </div>
+          @if (alert.acknowledged) {
+            <span class="tag tag-ack">Reconocida</span>
+          } @else {
+            <span class="tag tag-new">Nueva</span>
+          }
+          <div class="alert-time">{{ formatTime(alert.occurredAt) }}</div>
+        </div>
+      }
+    }
+  </div>
+</div>

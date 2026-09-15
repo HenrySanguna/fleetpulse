@@ -1,7 +1,12 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
+import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
+import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
+import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
+import dev.fleetpulse.processor.geofencing.JdbcVehicleFenceStateWriter;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -207,11 +212,26 @@ class TelemetryVehicleStateGuardTest {
     }
 
     private static JdbcTelemetryPositionWriter newWriter() {
-        return new JdbcTelemetryPositionWriter(newJdbcTemplate(), newMotionStreakTracker());
+        JdbcTemplate jdbcTemplate = newJdbcTemplate();
+        return new JdbcTelemetryPositionWriter(jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate));
     }
 
     private static VehicleMotionStreakTracker newMotionStreakTracker() {
         return new VehicleMotionStreakTracker(new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
+    }
+
+    // Task 2.4/WU4: see TelemetryBatchWriteTest's identical helper -- this
+    // test never seeds any geofences either, so a no-op alert publisher is
+    // sufficient here too.
+    private static GeofenceRuleDispatcher newGeofenceRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new GeofenceRuleDispatcher(
+            jdbcTemplate,
+            new GeofenceEvaluator(jdbcTemplate),
+            new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0),
+            alert -> { },
+            new JdbcVehicleFenceStateWriter(jdbcTemplate),
+            new JdbcGeofenceAlertWriter(jdbcTemplate)
+        );
     }
 
     private static Connection connect() throws SQLException {

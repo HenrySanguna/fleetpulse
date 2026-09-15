@@ -1,3 +1,58 @@
 :host {
   display: block;
 }
+
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  font-size: 13px;
+}
+
+.detail-grid dt {
+  color: var(--fp-text-faint);
+}
+
+.detail-grid dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+  color: var(--fp-text);
+}
+
+/* `p-card`'s own root element is rendered in this component's template, so
+   this selector is scoped normally; the title/body overrides below reach
+   PrimeNG's internal `.p-card-title`/`.p-card-body` spans through inherited
+   CSS custom properties instead of `::ng-deep`. */
+p-card {
+  border: 1px solid var(--fp-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 33, 43, 0.04);
+  --p-card-title-font-size: 13px;
+  --p-card-title-font-weight: 700;
+  --p-card-body-padding: 12px 14px 14px;
+  --p-card-body-gap: 8px;
+}
+
+/* Same soft-tint tag override as the vehicle list's online/offline badge. */
+p-card p-tag {
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+p-card p-tag.p-tag-success {
+  background: var(--fp-success-tint);
+  color: var(--fp-success-tint-text);
+}
+
+p-card p-tag.p-tag-danger {
+  background: var(--fp-danger-tint);
+  color: var(--fp-danger-tint-text);
+}
