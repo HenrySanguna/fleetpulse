@@ -1,3 +1,40 @@
 :host {
   display: block;
 }
+
+.search-wrap {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fp-text-faint);
+  pointer-events: none;
+}
+
+.online-only-label {
+  font-size: 13.5px;
+  color: var(--fp-text);
+}
+
+/* `input[pInputText]`, `p-select` and `p-checkbox` render their root element
+   directly in this component's template, so these selectors are scoped
+   normally without `::ng-deep`. */
+.search-input {
+  padding: 8px 10px 8px 32px !important;
+  font-size: 13.5px;
+  --p-inputtext-border-radius: 8px;
+  --p-inputtext-border-color: var(--fp-border);
+}
+
+p-select {
+  --p-select-border-radius: 8px;
+  --p-select-border-color: var(--fp-border);
+}
+
+p-checkbox {
+  --p-checkbox-border-radius: 6px;
+}
