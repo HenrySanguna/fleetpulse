@@ -12,12 +12,16 @@ import {
 import { Map as MapLibreMap } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
+import type { GeofenceResponse } from '@fleetpulse/api-client';
 import { FleetStore } from '../services/fleet.store';
 import { VehicleTrackService } from '../services/vehicle-track.service';
 import { VehicleInterpolationEngine } from '../services/vehicle-interpolation';
 import { toVehicleFeatureCollection } from '../services/vehicle-symbol.util';
 import type { VehicleState } from '../models/vehicle-state.model';
 import type { TrackLineFeature } from '../services/vehicle-track.service';
+import { toGeofenceFeatureCollection } from '../../geofencing/services/geofence-geometry.util';
+import { GeofenceService } from '../../geofencing/services/geofence.service';
+import { GeofenceStore } from '../../geofencing/services/geofence.store';
 
 // Task 4.1: free tile provider, no paid token (project.md forbids Mapbox GL
 // JS specifically, for exactly that reason). OpenFreeMap
@@ -33,6 +37,9 @@ const VEHICLES_SOURCE_ID = 'vehicles';
 const VEHICLES_LAYER_ID = 'vehicles-layer';
 const TRACK_SOURCE_ID = 'selected-vehicle-track';
 const TRACK_LAYER_ID = 'selected-vehicle-track-layer';
+const GEOFENCES_SOURCE_ID = 'geofences';
+const GEOFENCES_LAYER_ID = 'geofences-layer';
+const GEOFENCES_OUTLINE_LAYER_ID = 'geofences-outline-layer';
 
 const EMPTY_TRACK_COLLECTION: FeatureCollection<LineString, Record<string, never>> = {
   type: 'FeatureCollection',
@@ -72,6 +79,8 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   private readonly mapContainer = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly fleetStore = inject(FleetStore);
   private readonly trackService = inject(VehicleTrackService);
+  private readonly geofenceService = inject(GeofenceService);
+  private readonly geofenceStore = inject(GeofenceStore);
 
   private readonly interpolation = new VehicleInterpolationEngine();
   private latestVehicles: readonly VehicleState[] = [];
@@ -125,6 +134,15 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
         map.flyTo({ center: [vehicle.lon, vehicle.lat], zoom: Math.max(map.getZoom(), 14), essential: true });
       }
     });
+
+    // Task 5.3: active-geofence visualization. Independent of the vehicle
+    // layer and the track resource above, same "one resource's failure
+    // never affects another layer" convention -- GeofenceStore is shared
+    // with the geofencing editor (WU7's own page), so both read the exact
+    // same fetched list.
+    effect(() => {
+      this.renderGeofences(this.geofenceStore.geofences());
+    });
   }
 
   ngAfterViewInit(): void {
@@ -140,6 +158,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       this.registerVehicleIcon(map);
       this.addVehicleLayer(map);
       this.addTrackLayer(map);
+      this.addGeofenceLayer(map);
       this.styleLoaded.set(true);
 
       if (isE2eHarness()) {
@@ -154,9 +173,11 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       });
 
       this.renderTrack(this.trackService.trackLine());
+      this.renderGeofences(this.geofenceStore.geofences());
     });
 
     this.frameId = requestAnimationFrame(this.animationLoop);
+    this.geofenceService.load();
   }
 
   ngOnDestroy(): void {
@@ -197,6 +218,17 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     }
     const source = this.map.getSource(TRACK_SOURCE_ID) as GeoJSONSource | undefined;
     source?.setData(feature ? { type: 'FeatureCollection', features: [feature] } : EMPTY_TRACK_COLLECTION);
+  }
+
+  // Task 5.3: same pure mapper the geofencing editor's own drawing-context
+  // layer uses (geofence-geometry.util.ts), so a geofence never renders
+  // differently depending on which screen shows it.
+  private renderGeofences(geofences: readonly GeofenceResponse[]): void {
+    if (!this.styleLoaded() || !this.map) {
+      return;
+    }
+    const source = this.map.getSource(GEOFENCES_SOURCE_ID) as GeoJSONSource | undefined;
+    source?.setData(toGeofenceFeatureCollection(geofences));
   }
 
   // Draws a small filled triangle onto an offscreen canvas and registers it
@@ -276,6 +308,25 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       source: TRACK_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': '#3b82f6', 'line-width': 3 },
+    });
+  }
+
+  // Task 5.3: the exact same fill+outline styling the geofencing editor's
+  // own context layer uses for "existing geofences", so a geofence looks
+  // identical whether seen from this live map or from the editor.
+  private addGeofenceLayer(map: MapLibreMap): void {
+    map.addSource(GEOFENCES_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: GEOFENCES_LAYER_ID,
+      type: 'fill',
+      source: GEOFENCES_SOURCE_ID,
+      paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.15 },
+    });
+    map.addLayer({
+      id: GEOFENCES_OUTLINE_LAYER_ID,
+      type: 'line',
+      source: GEOFENCES_SOURCE_ID,
+      paint: { 'line-color': '#2563eb', 'line-width': 2 },
     });
   }
 }

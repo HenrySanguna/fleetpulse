@@ -2,6 +2,8 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FleetStore } from '../services/fleet.store';
 import { VehicleTrackService } from '../services/vehicle-track.service';
+import { GeofenceService } from '../../geofencing/services/geofence.service';
+import { GeofenceStore } from '../../geofencing/services/geofence.store';
 import { LiveMapComponent } from './live-map.component';
 
 type Handler = (...args: unknown[]) => void;
@@ -118,13 +120,22 @@ function nextFrame(): Promise<void> {
 
 describe('LiveMapComponent', () => {
   let store: InstanceType<typeof FleetStore>;
+  let geofenceStore: InstanceType<typeof GeofenceStore>;
 
   beforeEach(() => {
     fakeMaps.length = 0;
     TestBed.configureTestingModule({
-      providers: [{ provide: VehicleTrackService, useValue: { trackLine: () => undefined } }],
+      providers: [
+        { provide: VehicleTrackService, useValue: { trackLine: () => undefined } },
+        // Task 5.3: GeofenceService does real HTTP (via getJson()), which
+        // has no backend to hit here -- faked the same way VehicleTrackService
+        // is above, while GeofenceStore (the pure state it feeds) stays real
+        // so renderGeofences() can be proven directly via store.setGeofences().
+        { provide: GeofenceService, useValue: { load: vi.fn() } },
+      ],
     });
     store = TestBed.inject(FleetStore);
+    geofenceStore = TestBed.inject(GeofenceStore);
   });
 
   // Task 4.1
@@ -162,6 +173,31 @@ describe('LiveMapComponent', () => {
 
     const trackLayer = map.addLayerCalls.find((layer) => layer['id'] === 'selected-vehicle-track-layer');
     expect(trackLayer).toMatchObject({ type: 'line', source: 'selected-vehicle-track' });
+  });
+
+  // Task 5.3
+  it('adds a fill+outline geofences layer and renders GeofenceStore active geofences into it', async () => {
+    const { map } = await createAndLoad();
+
+    expect(map.addLayerCalls.find((layer) => layer['id'] === 'geofences-layer')).toMatchObject({
+      type: 'fill',
+      source: 'geofences',
+    });
+    expect(map.addLayerCalls.find((layer) => layer['id'] === 'geofences-outline-layer')).toMatchObject({
+      type: 'line',
+      source: 'geofences',
+    });
+
+    geofenceStore.setGeofences([
+      { id: 'g1', name: 'Depot', vertices: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }, { lat: 3, lon: 1 }, { lat: 1, lon: 1 }] },
+    ]);
+    TestBed.tick();
+
+    const source = map.getSource('geofences');
+    expect(source?.setData).toHaveBeenCalled();
+    const calls = source?.setData.mock.calls ?? [];
+    const lastCall = calls[calls.length - 1]?.[0] as { features: Array<{ properties: { id: string } }> };
+    expect(lastCall.features.some((feature) => feature.properties.id === 'g1')).toBe(true);
   });
 
   it('feeds FleetStore vehicles into the vehicles source through the animation loop', async () => {

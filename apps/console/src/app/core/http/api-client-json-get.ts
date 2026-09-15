@@ -45,3 +45,16 @@ import type { Configuration } from '@fleetpulse/api-client';
 export function getJson<T>(http: HttpClient, configuration: Configuration, path: string): Observable<T> {
   return http.get<T>(`${configuration.basePath}${path}`, { withCredentials: configuration.withCredentials });
 }
+
+// Same gap as getJson() above, confirmed again while wiring WU7's
+// GeofenceService: GeofenceControllerService.create()/update() (generated)
+// also default their Accept header to '*/*', so POST/PUT hit the identical
+// responseType:'blob' misclassification -- not just the GET methods the
+// original comment called out. Bypasses the generated method the same way.
+export function postJson<T>(http: HttpClient, configuration: Configuration, path: string, body: unknown): Observable<T> {
+  return http.post<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
+}
+
+export function putJson<T>(http: HttpClient, configuration: Configuration, path: string, body: unknown): Observable<T> {
+  return http.put<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
+}

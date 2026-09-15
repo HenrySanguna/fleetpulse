@@ -1,0 +1,76 @@
+<div class="flex h-full">
+  <aside class="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-surface-200 p-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold">Geofences</h2>
+      <p-button data-testid="new-geofence" label="New" size="small" (onClick)="startNewGeofence()" />
+    </div>
+
+    @if (loading()) {
+      <p class="text-sm text-surface-500">Loading...</p>
+    }
+    @if (loadError()) {
+      <p class="text-sm text-red-600">{{ loadError() }}</p>
+    }
+
+    <ul class="flex flex-col gap-1">
+      @for (geofence of geofences(); track geofence.id) {
+        <li>
+          <button
+            type="button"
+            class="w-full rounded px-2 py-1 text-left hover:bg-surface-100"
+            [class.bg-surface-200]="selected()?.id === geofence.id"
+            [attr.data-testid]="'select-geofence-' + geofence.id"
+            (click)="selectGeofence(geofence)"
+          >
+            {{ geofence.name }}
+          </button>
+        </li>
+      }
+    </ul>
+
+    <form [formGroup]="form" class="flex flex-col gap-3 border-t border-surface-200 pt-3">
+      <label class="flex flex-col gap-1 text-sm" for="geofence-name-input">
+        Name
+        <input id="geofence-name-input" pInputText formControlName="name" data-testid="geofence-name-input" />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm" for="geofence-rule-select">
+        Rule
+        <p-select
+          inputId="geofence-rule-select"
+          [options]="ruleOptions"
+          optionLabel="label"
+          optionValue="value"
+          formControlName="rule"
+          data-testid="geofence-rule-select"
+        />
+      </label>
+
+      @if (form.controls.rule.value === ruleEnum.OnDwell) {
+        <label class="flex flex-col gap-1 text-sm" for="geofence-dwell-input">
+          Dwell seconds
+          <p-inputNumber inputId="geofence-dwell-input" formControlName="dwellSecs" [min]="1" data-testid="geofence-dwell-input" />
+        </label>
+      }
+
+      @if (saveError()) {
+        <p class="text-sm text-red-600">{{ saveError() }}</p>
+      }
+
+      <p-button
+        data-testid="save-geofence"
+        [label]="isEditing() ? 'Update geofence' : 'Save geofence'"
+        [disabled]="!canSave()"
+        (onClick)="save()"
+      />
+    </form>
+  </aside>
+
+  <main class="relative flex-1">
+    <app-geofence-drawing-editor
+      [existingGeofences]="geofences()"
+      [resetToken]="resetToken()"
+      (draftChange)="onDraftChange($event)"
+    />
+  </main>
+</div>
