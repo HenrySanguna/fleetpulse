@@ -2,6 +2,10 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { AuthStore } from '../auth/auth.store';
+import { FleetStore } from '../../features/live-map/services/fleet.store';
+import { GeofenceStore } from '../../features/geofencing/services/geofence.store';
+import { AlertsStore } from '../../features/alerts/services/alerts.store';
+import { ActivityReportStore } from '../../features/activity-report/services/activity-report.store';
 
 const FLEET_ADMIN_ROLE_LABEL = 'Administrador de flota';
 const DEFAULT_ROLE_LABEL = 'Despachador';
@@ -23,6 +27,10 @@ export class AppShellComponent {
   private readonly authService = inject(AuthService);
   private readonly authStore = inject(AuthStore);
   private readonly router = inject(Router);
+  private readonly fleetStore = inject(FleetStore);
+  private readonly geofenceStore = inject(GeofenceStore);
+  private readonly alertsStore = inject(AlertsStore);
+  private readonly activityReportStore = inject(ActivityReportStore);
 
   protected readonly dispatcher = this.authStore.dispatcher;
 
@@ -46,8 +54,15 @@ export class AppShellComponent {
     });
   }
 
+  // Every providedIn:'root' feature store resets on logout -- otherwise a
+  // second dispatcher signing in on the same tab briefly (or indefinitely,
+  // if their own fetch fails) sees the previous dispatcher's org data.
   private finishLogout(): void {
     this.authStore.clear();
+    this.fleetStore.reset();
+    this.geofenceStore.reset();
+    this.alertsStore.reset();
+    this.activityReportStore.reset();
     this.router.navigateByUrl('/login');
   }
 }

@@ -6,6 +6,10 @@ import { Subject, of, throwError } from 'rxjs';
 import type { DispatcherSelfView } from '@fleetpulse/api-client';
 import { AuthService } from '../auth/auth.service';
 import { AuthStore } from '../auth/auth.store';
+import { FleetStore } from '../../features/live-map/services/fleet.store';
+import { GeofenceStore } from '../../features/geofencing/services/geofence.store';
+import { AlertsStore } from '../../features/alerts/services/alerts.store';
+import { ActivityReportStore } from '../../features/activity-report/services/activity-report.store';
 import { AppShellComponent } from './app-shell.component';
 
 function click(fixture: ComponentFixture<AppShellComponent>, testId: string): void {
@@ -16,17 +20,29 @@ function click(fixture: ComponentFixture<AppShellComponent>, testId: string): vo
 describe('AppShellComponent', () => {
   let authService: { logout: ReturnType<typeof vi.fn> };
   let authStore: { dispatcher: ReturnType<typeof signal<DispatcherSelfView | null>>; clear: ReturnType<typeof vi.fn> };
+  let fleetStore: { reset: ReturnType<typeof vi.fn> };
+  let geofenceStore: { reset: ReturnType<typeof vi.fn> };
+  let alertsStore: { reset: ReturnType<typeof vi.fn> };
+  let activityReportStore: { reset: ReturnType<typeof vi.fn> };
   let router: Router;
 
   beforeEach(() => {
     authService = { logout: vi.fn() };
     authStore = { dispatcher: signal<DispatcherSelfView | null>(null), clear: vi.fn() };
+    fleetStore = { reset: vi.fn() };
+    geofenceStore = { reset: vi.fn() };
+    alertsStore = { reset: vi.fn() };
+    activityReportStore = { reset: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: authService },
         { provide: AuthStore, useValue: authStore },
+        { provide: FleetStore, useValue: fleetStore },
+        { provide: GeofenceStore, useValue: geofenceStore },
+        { provide: AlertsStore, useValue: alertsStore },
+        { provide: ActivityReportStore, useValue: activityReportStore },
       ],
     });
 
@@ -78,7 +94,7 @@ describe('AppShellComponent', () => {
     expect(compiled.querySelector('.avatar')?.textContent?.trim()).toBe('MA');
   });
 
-  it('signing out logs out, clears the store, and navigates to /login', () => {
+  it('signing out logs out, clears every feature store, and navigates to /login', () => {
     authService.logout.mockReturnValue(of(undefined));
     const fixture = createFixture();
 
@@ -86,6 +102,13 @@ describe('AppShellComponent', () => {
 
     expect(authService.logout).toHaveBeenCalledTimes(1);
     expect(authStore.clear).toHaveBeenCalledTimes(1);
+    // A second dispatcher signing in on the same tab must never see the
+    // first one's org data -- every providedIn:'root' feature store has to
+    // reset too, not just AuthStore.
+    expect(fleetStore.reset).toHaveBeenCalledTimes(1);
+    expect(geofenceStore.reset).toHaveBeenCalledTimes(1);
+    expect(alertsStore.reset).toHaveBeenCalledTimes(1);
+    expect(activityReportStore.reset).toHaveBeenCalledTimes(1);
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
   });
 

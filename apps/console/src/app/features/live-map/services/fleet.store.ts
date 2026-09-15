@@ -75,6 +75,10 @@ export const FleetStore = signalStore(
     selectVehicle(vehicleId: string | undefined): void {
       patchState(store, { selectedVehicleId: vehicleId });
     },
+
+    reset(): void {
+      patchState(store, INITIAL_STATE);
+    },
   })),
 );
 

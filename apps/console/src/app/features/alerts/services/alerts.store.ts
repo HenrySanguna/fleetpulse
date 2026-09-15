@@ -70,6 +70,10 @@ export const AlertsStore = signalStore(
       setSearchQuery(searchQuery: string): void {
         patchState(store, { searchQuery });
       },
+
+      reset(): void {
+        patchState(store, INITIAL_STATE);
+      },
     };
   }),
 );
