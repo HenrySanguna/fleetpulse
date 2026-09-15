@@ -27,9 +27,11 @@ export const appRoutes: Route[] = [
         path: 'alerts',
         loadComponent: () => import('./features/alerts/pages/alerts-page.component').then((m) => m.AlertsPageComponent),
       },
-      // Activity Report is shown in the nav rail (AppShellComponent, copied
-      // from the Main.dc.html mockup) but its screen is a separate follow-up
-      // task -- not built here, so no child route for it yet.
+      {
+        path: 'activity',
+        loadComponent: () =>
+          import('./features/activity-report/pages/activity-report-page.component').then((m) => m.ActivityReportPageComponent),
+      },
     ],
   },
 ];

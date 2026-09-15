@@ -1,0 +1,107 @@
+<div class="activity-page flex h-full flex-col overflow-hidden">
+  <div class="page-head">
+    <h1>Actividad del vehículo</h1>
+  </div>
+
+  <div class="filter-bar">
+    <select class="select" data-testid="activity-vehicle-select" [value]="selectedVehicleId()" (change)="onVehicleChange($event)">
+      @for (vehicle of vehicles(); track vehicle.id) {
+        <option [value]="vehicle.id">{{ vehicle.label }} &middot; {{ vehicle.id }}</option>
+      }
+    </select>
+
+    <div class="select date-display">
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <rect x="3" y="4" width="14" height="13" rx="2" />
+        <path d="M3 8h14M7 2v4M13 2v4" />
+      </svg>
+      {{ dateRangeLabel }}
+    </div>
+
+    <button type="button" class="btn btn-primary" data-testid="activity-generate-report" (click)="generateReport()">
+      Generar informe
+    </button>
+
+    @if (loading()) {
+      <span class="status-text">Cargando informe...</span>
+    }
+  </div>
+
+  @if (loadError()) {
+    <p class="status-text status-error status-banner">{{ loadError() }}</p>
+  }
+
+  <div class="body-scroll">
+    <div class="stat-row">
+      <div class="stat-card" data-testid="stat-distance">
+        <div class="stat-label">Distancia total</div>
+        <div class="stat-value mono">{{ distanceLabel() }}<span class="stat-unit">km</span></div>
+      </div>
+      <div class="stat-card" data-testid="stat-moving">
+        <div class="stat-label">Tiempo en marcha</div>
+        <div class="stat-value mono">{{ movingLabel() }}<span class="stat-unit">min</span></div>
+      </div>
+      <div class="stat-card" data-testid="stat-idle">
+        <div class="stat-label">Tiempo en ralentí</div>
+        <div class="stat-value mono">{{ idleLabel() }}<span class="stat-unit">min</span></div>
+      </div>
+      <div class="stat-card" data-testid="stat-speed">
+        <div class="stat-label">Vel. media / máxima</div>
+        <div class="stat-value mono">{{ speedLabel() }}<span class="stat-unit">km/h</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Distancia por día</div>
+      <div class="chart">
+        <div class="chart-grid" style="bottom: 0"></div>
+        <div class="chart-grid" style="bottom: 65px"></div>
+        <div class="chart-grid" style="bottom: 130px"></div>
+        @for (bar of chartBars(); track bar.day) {
+          <div class="bar-col">
+            @if (bar.showLabel) {
+              <span class="bar-val mono">{{ bar.distanceKm.toFixed(1) }}</span>
+            }
+            <div class="bar" [class.bar-empty]="!bar.hasData" [style.height.px]="bar.heightPx"></div>
+            <span class="bar-day">{{ bar.day }}</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="panel trips-panel">
+      <div class="panel-title">Viajes</div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th class="num">Distancia</th>
+              <th class="num">Duración</th>
+              <th class="num">Ralentí</th>
+              <th class="num">Vel. máx.</th>
+            </tr>
+          </thead>
+          <tbody class="mono">
+            @for (trip of trips(); track trip.date + trip.startTime) {
+              <tr data-testid="activity-trip-row">
+                <td>{{ trip.date }}</td>
+                <td>{{ trip.startTime }}</td>
+                <td>{{ trip.endTime }}</td>
+                <td class="num">{{ trip.distanceKm.toFixed(1) }} km</td>
+                <td class="num">{{ formatTripDuration(trip) }}</td>
+                <td class="num">{{ formatTripIdle(trip) }}</td>
+                <td class="num">{{ trip.maxSpeedKmh }} km/h</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (!loading() && trips().length === 0) {
+          <p class="status-text">No hay viajes registrados para este vehículo en el rango seleccionado.</p>
+        }
+      </div>
+    </div>
+  </div>
+</div>
