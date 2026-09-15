@@ -1,3 +1,12 @@
 :host {
   display: block;
 }
+
+.toolbar-float {
+  top: 16px;
+  left: 16px;
+  background: var(--fp-surface);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(16, 33, 43, 0.12);
+  padding: 12px 14px;
+}
