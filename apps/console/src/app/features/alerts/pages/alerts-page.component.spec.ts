@@ -105,6 +105,18 @@ describe('AlertsPageComponent', () => {
     expect(cardIds(fixture)).toEqual(['alert-a1', 'alert-a2', 'alert-a3']);
   });
 
+  it('renders visually distinct icons for geofence_enter and geofence_exit', () => {
+    const enterAlert: Alert = { ...ALERTS[0], id: 'enter', type: 'geofence_enter' };
+    const exitAlert: Alert = { ...ALERTS[0], id: 'exit', type: 'geofence_exit' };
+    alertsService.list.mockReturnValue(of([enterAlert, exitAlert]));
+
+    const fixture = createFixture();
+
+    const enterSvg = fixture.nativeElement.querySelector('[data-testid="alert-enter"] .alert-icon svg')?.outerHTML;
+    const exitSvg = fixture.nativeElement.querySelector('[data-testid="alert-exit"] .alert-icon svg')?.outerHTML;
+    expect(enterSvg).not.toBe(exitSvg);
+  });
+
   it('marks the active filter chip with aria-pressed', () => {
     const fixture = createFixture();
 
