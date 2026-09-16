@@ -50,6 +50,20 @@ public final class SecuredMosquittoTestSupport {
             // happens afterward, over the broker's own control topic), so a
             // plain Wait.forListeningPort() alone would be a race: wait for
             // its last provisioning step's log line instead.
-            .waitingFor(Wait.forLogMessage(".*addClientRole.*\\n", 1).withStartupTimeout(Duration.ofSeconds(60)));
+            //
+            // Issue #36: a bare ".*addClientRole.*" also matches
+            // `mosquitto_ctrl dynsec init`'s one-time usage banner ("...
+            // mosquitto_ctrl <connect options> dynsec addClientRole
+            // <username> <rolename> [priority]"), printed in the first
+            // ~150ms of container startup, long before any real
+            // provisioning runs. That false-positive match let the
+            // container report ready while "internal-services" still had no
+            // role/ACL, so this test's own publish raced the real
+            // addClientRole call and lost on CI's slower runner (100%
+            // reproducible there, essentially never locally). Mosquitto
+            // prefixes every *actually executed* dynsec command with
+            // "dynsec: " (colon) -- the banner's plain-English usage line
+            // never has that colon -- so anchor on that prefix instead.
+            .waitingFor(Wait.forLogMessage(".*dynsec:.*addClientRole.*\\n", 1).withStartupTimeout(Duration.ofSeconds(60)));
     }
 }

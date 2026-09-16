@@ -54,39 +54,21 @@ jobs:
       # commit that only touches apps/console must not run any Gradle task
       # here; a commit touching backend/domain must affect both api and
       # processor (see tasks.md, "Definicion de terminado").
-      # Issue #36: api/domain/processor each spin up their own real PostGIS +
-      # Mosquitto Testcontainers pair, and running them concurrently starved
-      # ProcessorHeartbeatPublisherTest's MQTT round-trip for CPU/Docker on
-      # this runner's 2 vCPUs. `--parallel=1` here (tried first) had ZERO
-      # effect -- reproduced 5/5 after it landed (04-add-live-map's PRs
-      # #38-#42) -- because @nx/gradle batches every affected Gradle
+      # api/domain/processor each spin up their own real PostGIS + Mosquitto
+      # Testcontainers pair. `--parallel=1` here (tried in PR #37 chasing
+      # issue #36) had ZERO effect -- reproduced 5/5 on 04-add-live-map's PRs
+      # #38-#42 -- because @nx/gradle batches every affected Gradle
       # subproject's test task into ONE external `gradle-batch-runner-all.jar`
       # process outside Nx's own task scheduler entirely, so this flag (which
-      # only throttles Nx's own scheduler) never reaches it. The real fix is
-      # `backend/gradle.properties`' `org.gradle.parallel=false`, which Gradle
-      # itself reads regardless of which tool launched the build -- that's
-      # what actually stops the concurrent subproject execution now, so
-      # --parallel is back to a normal value here for unrelated-task
-      # throughput (e.g. console lint/test alongside the backend batch).
+      # only throttles Nx's own scheduler) never reaches it.
+      # `backend/gradle.properties`' `org.gradle.parallel=false` does stop
+      # concurrent subproject execution (Gradle itself reads it regardless of
+      # which tool launched the build), so --parallel is back to a normal
+      # value here for unrelated-task throughput (e.g. console lint/test
+      # alongside the backend batch) -- but that was never actually issue
+      # #36's cause; see SecuredMosquittoTestSupport for the real one.
       - name: nx affected -- lint, test, build
         run: npx nx affected -t lint test build --parallel=3 --outputStyle=static
-
-      # TODO(issue #36): temporary diagnostic -- Gradle's console summary only
-      # prints "ExceptionType at File:Line" for a failing test, never the
-      # message or stack trace (those only land in the XML/HTML report on
-      # disk), so there is no other way to see a failing assertion's full
-      # detail (including the Mosquitto broker logs now embedded in it) from
-      # a CI run. Remove once the flake is root-caused.
-      - name: Upload Gradle test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-test-reports
-          path: |
-            backend/**/build/test-results/**/*.xml
-            backend/**/build/reports/tests/**
-          if-no-files-found: warn
-          retention-days: 3
 
       # Runs on every CI run, not scoped to "affected": libs/api-client can
       # go stale from a hand-edit even on a commit where nx does not
