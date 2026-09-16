@@ -31,11 +31,19 @@ import java.util.UUID;
 @Component
 class VehicleStateJdbcReader {
 
+    // Task 2.1/2.4 (WU2): LEFT JOIN vehicle_destinations -- most vehicles
+    // have no active destination, and this snapshot must still include them
+    // (null destination/eta fields), the same "still appears, just with
+    // nulls" shape a vehicle with no vehicle_state row at all already gets
+    // from FleetStateService's own toResponse().
     private static final String SELECT_STATES_SQL = """
-        SELECT vehicle_id, ST_X(location::geometry) AS lon, ST_Y(location::geometry) AS lat,
-               recorded_at, motion_state, online
-        FROM vehicle_state
-        WHERE vehicle_id = ANY (?)
+        SELECT vs.vehicle_id, ST_X(vs.location::geometry) AS lon, ST_Y(vs.location::geometry) AS lat,
+               vs.recorded_at, vs.motion_state, vs.online,
+               ST_Y(vd.destination::geometry) AS destination_lat, ST_X(vd.destination::geometry) AS destination_lon,
+               vd.eta_seconds, vd.eta_margin_seconds, vd.eta_calculated_at
+        FROM vehicle_state vs
+        LEFT JOIN vehicle_destinations vd ON vd.vehicle_id = vs.vehicle_id
+        WHERE vs.vehicle_id = ANY (?)
         """;
 
     private final ObjectProvider<JdbcTemplate> jdbcTemplate;
@@ -69,12 +77,18 @@ class VehicleStateJdbcReader {
         Double lon = rs.getObject("lon", Double.class);
         Timestamp recordedAt = rs.getTimestamp("recorded_at");
         String motionState = rs.getString("motion_state");
+        Timestamp etaCalculatedAt = rs.getTimestamp("eta_calculated_at");
         return new VehicleStateRow(
             lat,
             lon,
             recordedAt == null ? null : recordedAt.toInstant(),
             motionState == null ? null : MotionState.valueOf(motionState),
-            rs.getBoolean("online")
+            rs.getBoolean("online"),
+            rs.getObject("destination_lat", Double.class),
+            rs.getObject("destination_lon", Double.class),
+            (Integer) rs.getObject("eta_seconds"),
+            (Integer) rs.getObject("eta_margin_seconds"),
+            etaCalculatedAt == null ? null : etaCalculatedAt.toInstant()
         );
     }
 }

@@ -29,6 +29,9 @@
 
       <dt>Last reported at</dt>
       <dd class="mono" data-testid="vehicle-detail-recorded-at">{{ v.recordedAt ?? 'Unknown' }}</dd>
+
+      <dt>ETA</dt>
+      <dd data-testid="vehicle-detail-eta">{{ etaLabel() }}</dd>
     </dl>
   </p-card>
 } @else {

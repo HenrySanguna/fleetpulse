@@ -52,6 +52,12 @@ export const FleetStore = signalStore(
       const current = store.vehicles();
       const existing = current.get(update.vehicleId);
 
+      // Task 2.4/2.5: eta updates carry no recordedAt of their own to
+      // compare against (EtaPayload's own wire shape, deliberately minimal
+      // -- see its class comment) -- the live MQTT stream already delivers
+      // messages in publish order, and a stale eta simply gets overwritten
+      // by the next one moments later, the same way alerts/presence updates
+      // (which also carry no monotonicity guard here) already behave.
       if (update.kind === 'telemetry' && isStale(update.recordedAt, existing?.recordedAt)) {
         return;
       }
@@ -91,6 +97,11 @@ function toVehicleState(vehicleId: string, vehicle: VehicleStateResponse): Vehic
     recordedAt: vehicle.recordedAt,
     motionState: vehicle.motionState,
     online: vehicle.online,
+    destinationLat: vehicle.destinationLat,
+    destinationLon: vehicle.destinationLon,
+    etaSeconds: vehicle.etaSeconds,
+    etaMarginSeconds: vehicle.etaMarginSeconds,
+    etaCalculatedAt: vehicle.etaCalculatedAt,
   };
 }
 
@@ -115,6 +126,15 @@ function mergeUpdate(existing: VehicleState | undefined, update: VehicleUpdate):
       recordedAt: update.recordedAt,
       speedKmh: update.speedKmh,
       heading: update.heading,
+    };
+  }
+  if (update.kind === 'eta') {
+    return {
+      ...existing,
+      vehicleId: update.vehicleId,
+      etaSeconds: update.etaSeconds,
+      etaMarginSeconds: update.etaMarginSeconds,
+      etaCalculatedAt: update.calculatedAt,
     };
   }
   return { ...existing, vehicleId: update.vehicleId, online: update.online };
