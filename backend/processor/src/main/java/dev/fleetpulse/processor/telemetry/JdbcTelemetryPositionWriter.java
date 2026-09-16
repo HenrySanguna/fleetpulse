@@ -1,6 +1,7 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
 import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -55,14 +56,14 @@ import java.util.UUID;
 // correctly chain multiple same-vehicle messages within one flush batch
 // (VehicleMotionStreakTracker's own responsibility, see its class comment).
 //
-// Task 2.4 (WU4, tasks.md forecast's architecture decision): geofence
-// evaluation is wired into this SAME guarded write path, not a separate
-// consumer or a second guard. selectGeofenceEligibleMessages() below
-// mirrors VehicleMotionStreakTracker's own isNewer()/running-map chaining
-// exactly -- same comparison (message.recordedAt().isAfter(known)), same
-// "no known state or null recordedAt counts as newer" rule -- computed from
-// the SAME knownMotionStates snapshot already loaded for motion detection,
-// so this costs zero extra queries. Deliberately NOT sourced from
+// Task 2.4 (WU4 of 05-add-geofencing, tasks.md forecast's architecture
+// decision): geofence evaluation is wired into this SAME guarded write path,
+// not a separate consumer or a second guard. selectLiveEligibleMessages()
+// below mirrors VehicleMotionStreakTracker's own isNewer()/running-map
+// chaining exactly -- same comparison (message.recordedAt().isAfter(known)),
+// same "no known state or null recordedAt counts as newer" rule -- computed
+// from the SAME knownMotionStates snapshot already loaded for motion
+// detection, so this costs zero extra queries. Deliberately NOT sourced from
 // UPSERT_VEHICLE_STATE_SQL's own batchUpdate() return value (an int[] of
 // per-statement affected-row counts is available there too): the JDBC
 // driver is free to report Statement.SUCCESS_NO_INFO for a batched
@@ -71,6 +72,15 @@ import java.util.UUID;
 // VehicleMotionStreakTracker's already-proven comparison in Java sidesteps
 // that risk entirely and stays consistent with "the same pattern task 4.2
 // already established" the forecast calls for.
+//
+// Task 2.4 (06-add-trips-eta-alerts, WU2, this change's own forecast):
+// EtaRecalculationDispatcher reuses this EXACT same eligible-message subset
+// -- renamed from selectGeofenceEligibleMessages to selectLiveEligibleMessages
+// (this file's own rename, documented per the "note deviations" convention)
+// now that it feeds two independent live-path consumers, not one. No new
+// eligibility computation was introduced for ETA: "is this message newer
+// than what is currently known" already means exactly the same thing for
+// destination-based ETA recalculation as it does for geofence evaluation.
 @Component
 public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
@@ -103,13 +113,18 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
     private final JdbcTemplate jdbcTemplate;
     private final VehicleMotionStreakTracker motionStreakTracker;
     private final GeofenceRuleDispatcher geofenceRuleDispatcher;
+    private final EtaRecalculationDispatcher etaRecalculationDispatcher;
 
     public JdbcTelemetryPositionWriter(
-        JdbcTemplate jdbcTemplate, VehicleMotionStreakTracker motionStreakTracker, GeofenceRuleDispatcher geofenceRuleDispatcher
+        JdbcTemplate jdbcTemplate,
+        VehicleMotionStreakTracker motionStreakTracker,
+        GeofenceRuleDispatcher geofenceRuleDispatcher,
+        EtaRecalculationDispatcher etaRecalculationDispatcher
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.motionStreakTracker = motionStreakTracker;
         this.geofenceRuleDispatcher = geofenceRuleDispatcher;
+        this.etaRecalculationDispatcher = etaRecalculationDispatcher;
     }
 
     @Override
@@ -139,7 +154,7 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
         Map<UUID, VehicleMotionSnapshot> knownMotionStates = loadKnownMotionStates(messages);
         List<VehicleMotionUpdate> motionUpdates = motionStreakTracker.computeUpdates(knownMotionStates, messages);
-        List<TelemetryMessage> geofenceEligibleMessages = selectGeofenceEligibleMessages(knownMotionStates, messages);
+        List<TelemetryMessage> liveEligibleMessages = selectLiveEligibleMessages(knownMotionStates, messages);
 
         jdbcTemplate.batchUpdate(UPSERT_VEHICLE_STATE_SQL, new BatchPreparedStatementSetter() {
             @Override
@@ -161,7 +176,8 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
             }
         });
 
-        geofenceRuleDispatcher.evaluateAndDispatch(geofenceEligibleMessages);
+        geofenceRuleDispatcher.evaluateAndDispatch(liveEligibleMessages);
+        etaRecalculationDispatcher.recalculateAndDispatch(liveEligibleMessages);
     }
 
     // See this class's own comment above for why this mirrors
@@ -173,7 +189,7 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
     // second eligible message for the same vehicle within this batch is
     // correctly compared against the first message's recordedAt, not
     // against stale pre-batch state.
-    private static List<TelemetryMessage> selectGeofenceEligibleMessages(
+    private static List<TelemetryMessage> selectLiveEligibleMessages(
         Map<UUID, VehicleMotionSnapshot> knownMotionStates, List<TelemetryMessage> messages
     ) {
         Map<UUID, Instant> lastKnownRecordedAt = new HashMap<>();

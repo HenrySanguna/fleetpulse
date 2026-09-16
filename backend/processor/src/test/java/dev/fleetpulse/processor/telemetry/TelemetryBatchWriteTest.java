@@ -1,7 +1,13 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
+import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
+import dev.fleetpulse.processor.eta.JdbcRecentSpeedReader;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationEtaWriter;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationReader;
+import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
 import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
 import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
 import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
@@ -166,7 +172,9 @@ class TelemetryBatchWriteTest {
 
     private static JdbcTelemetryPositionWriter newWriter() {
         JdbcTemplate jdbcTemplate = newJdbcTemplate();
-        return new JdbcTelemetryPositionWriter(jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate));
+        return new JdbcTelemetryPositionWriter(
+            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate), newEtaRecalculationDispatcher(jdbcTemplate)
+        );
     }
 
     private static VehicleMotionStreakTracker newMotionStreakTracker() {
@@ -188,6 +196,21 @@ class TelemetryBatchWriteTest {
             alert -> { },
             new JdbcVehicleFenceStateWriter(jdbcTemplate),
             new JdbcGeofenceAlertWriter(jdbcTemplate)
+        );
+    }
+
+    // Task 2.4/WU2: no destinations are ever assigned by this test, so this
+    // dispatcher always finds zero active destinations to recalculate --
+    // mirrors newGeofenceRuleDispatcher's own identical reasoning above.
+    private static EtaRecalculationDispatcher newEtaRecalculationDispatcher(JdbcTemplate jdbcTemplate) {
+        FleetpulseEtaProperties etaProperties = new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15));
+        return new EtaRecalculationDispatcher(
+            new JdbcVehicleDestinationReader(jdbcTemplate),
+            new JdbcRecentSpeedReader(jdbcTemplate),
+            new SinuosityEtaCalculator(etaProperties),
+            new JdbcVehicleDestinationEtaWriter(jdbcTemplate),
+            (organizationId, vehicleId, estimate, calculatedAt) -> { },
+            etaProperties
         );
     }
 

@@ -62,6 +62,30 @@ describe('mapInboundMessage', () => {
     expect(update).toBeUndefined();
   });
 
+  it('maps an eta message, taking the vehicleId from the topic', () => {
+    const update = mapInboundMessage({
+      topic: 'fleet/org-1/vehicle/v3/eta',
+      payload: { etaSeconds: 900, etaMarginSeconds: 270, calculatedAt: '2026-01-01T00:00:05Z' },
+    });
+
+    expect(update).toEqual({
+      kind: 'eta',
+      vehicleId: 'v3',
+      etaSeconds: 900,
+      etaMarginSeconds: 270,
+      calculatedAt: '2026-01-01T00:00:05Z',
+    });
+  });
+
+  it('discards an eta message missing required fields', () => {
+    const update = mapInboundMessage({
+      topic: 'fleet/org-1/vehicle/v3/eta',
+      payload: { etaSeconds: 900 },
+    });
+
+    expect(update).toBeUndefined();
+  });
+
   it('discards a message whose payload failed to parse as JSON', () => {
     const update = mapInboundMessage({
       topic: 'fleet/org-1/vehicle/v1/telemetry',

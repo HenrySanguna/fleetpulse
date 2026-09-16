@@ -7,4 +7,5 @@ export * from './geofenceRequest';
 export * from './geofenceResponse';
 export * from './mqttCredentialsResponse';
 export * from './trackPointResponse';
+export * from './vehicleDestinationResponse';
 export * from './vehicleStateResponse';

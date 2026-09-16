@@ -1,11 +1,18 @@
 package dev.fleetpulse.processor.geofencing;
 
+import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryBufferProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
+import dev.fleetpulse.processor.eta.EtaPublisher;
+import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
+import dev.fleetpulse.processor.eta.JdbcRecentSpeedReader;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationEtaWriter;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationReader;
+import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import dev.fleetpulse.processor.telemetry.JdbcTelemetryPositionWriter;
 import dev.fleetpulse.processor.telemetry.TelemetryImplausibilityFilter;
@@ -200,6 +207,12 @@ class GeofenceAlertEndToEndTest {
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
         ctx.registerBean(FleetpulseGeofencingProperties.class,
             () -> new FleetpulseGeofencingProperties(confirmationReadings, confirmationDuration, 15.0));
+        // Task 2.4 (06-add-trips-eta-alerts, WU2): no destinations are ever
+        // assigned by this test, so EtaRecalculationDispatcher always finds
+        // zero active destinations to recalculate -- this test proves
+        // geofence alert dispatch, not ETA recalculation.
+        ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
+        ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -212,6 +225,8 @@ class GeofenceAlertEndToEndTest {
             TelemetryImplausibilityFilter.class, VehicleMotionStreakTracker.class,
             GeofenceEvaluator.class, JdbcVehicleFenceStateWriter.class, JdbcGeofenceAlertWriter.class,
             AlertMqttConfig.class, MqttGeofenceAlertPublisher.class, GeofenceRuleDispatcher.class,
+            JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
+            JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
             JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
