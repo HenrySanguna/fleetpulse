@@ -1,6 +1,10 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
 import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
@@ -220,7 +224,8 @@ class TelemetryVehicleStateGuardTest {
     private static JdbcTelemetryPositionWriter newWriter() {
         JdbcTemplate jdbcTemplate = newJdbcTemplate();
         return new JdbcTelemetryPositionWriter(
-            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate), newEtaRecalculationDispatcher(jdbcTemplate)
+            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate),
+            newEtaRecalculationDispatcher(jdbcTemplate), newAlertRuleDispatcher(jdbcTemplate)
         );
     }
 
@@ -256,6 +261,18 @@ class TelemetryVehicleStateGuardTest {
             new JdbcVehicleDestinationEtaWriter(jdbcTemplate),
             (organizationId, vehicleId, estimate, calculatedAt) -> { },
             etaProperties
+        );
+    }
+
+    // Task 3.2/WU3: same "no sustained condition, no-op publisher" reasoning
+    // as newGeofenceRuleDispatcher/newEtaRecalculationDispatcher above.
+    private static AlertRuleDispatcher newAlertRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new AlertRuleDispatcher(
+            jdbcTemplate,
+            new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)),
+            new JdbcAlertWriter(jdbcTemplate),
+            alert -> { },
+            new JdbcAlertSilenceStateStore(jdbcTemplate)
         );
     }
 

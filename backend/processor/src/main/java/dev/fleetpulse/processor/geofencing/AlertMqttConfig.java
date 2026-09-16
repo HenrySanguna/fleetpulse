@@ -47,7 +47,12 @@ import java.util.UUID;
 @Configuration
 public class AlertMqttConfig {
 
-    static final String ALERT_OUTPUT_CHANNEL = "geofenceAlertOutputChannel";
+    // Public (not package-private) since 06-add-trips-eta-alerts/WU3:
+    // MqttAlertPublisher (dev.fleetpulse.processor.alerts) reuses this exact
+    // channel/connection for the speeding/excessive_idle alert types it
+    // adds, rather than standing up a second outbound MQTT config for the
+    // SAME fleet/{orgId}/alerts topic -- see that class's own comment.
+    public static final String ALERT_OUTPUT_CHANNEL = "geofenceAlertOutputChannel";
     static final int ALERT_QOS = 2;
 
     @Bean(name = ALERT_OUTPUT_CHANNEL)

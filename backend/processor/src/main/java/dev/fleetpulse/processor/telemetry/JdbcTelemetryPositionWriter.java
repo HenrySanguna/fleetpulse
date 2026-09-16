@@ -1,6 +1,7 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
 import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
 import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -58,7 +59,7 @@ import java.util.UUID;
 //
 // Task 2.4 (WU4 of 05-add-geofencing, tasks.md forecast's architecture
 // decision): geofence evaluation is wired into this SAME guarded write path,
-// not a separate consumer or a second guard. selectLiveEligibleMessages()
+// not a separate consumer or a second guard. selectLiveEligibleBatch()
 // below mirrors VehicleMotionStreakTracker's own isNewer()/running-map
 // chaining exactly -- same comparison (message.recordedAt().isAfter(known)),
 // same "no known state or null recordedAt counts as newer" rule -- computed
@@ -81,6 +82,17 @@ import java.util.UUID;
 // eligibility computation was introduced for ETA: "is this message newer
 // than what is currently known" already means exactly the same thing for
 // destination-based ETA recalculation as it does for geofence evaluation.
+//
+// Tasks 3.2/3.3 (WU3): AlertRuleDispatcher is a THIRD live-path consumer of
+// this exact subset, so selectLiveEligibleMessages() was extended (renamed
+// to selectLiveEligibleBatch(), returning both the eligible messages AND
+// their already-computed VehicleMotionUpdate in one pass) rather than
+// re-deriving eligibility a third time or having AlertRuleDispatcher re-read
+// motion state from the database: it needs each eligible message's
+// motionState/lowSpeedStreakStartedAt for excessive-idle detection, and
+// those are the SAME values motionUpdates already carries for this exact
+// batch (zero extra queries), documented per the same "note deviations"
+// convention as the rename above.
 @Component
 public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
@@ -114,17 +126,20 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
     private final VehicleMotionStreakTracker motionStreakTracker;
     private final GeofenceRuleDispatcher geofenceRuleDispatcher;
     private final EtaRecalculationDispatcher etaRecalculationDispatcher;
+    private final AlertRuleDispatcher alertRuleDispatcher;
 
     public JdbcTelemetryPositionWriter(
         JdbcTemplate jdbcTemplate,
         VehicleMotionStreakTracker motionStreakTracker,
         GeofenceRuleDispatcher geofenceRuleDispatcher,
-        EtaRecalculationDispatcher etaRecalculationDispatcher
+        EtaRecalculationDispatcher etaRecalculationDispatcher,
+        AlertRuleDispatcher alertRuleDispatcher
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.motionStreakTracker = motionStreakTracker;
         this.geofenceRuleDispatcher = geofenceRuleDispatcher;
         this.etaRecalculationDispatcher = etaRecalculationDispatcher;
+        this.alertRuleDispatcher = alertRuleDispatcher;
     }
 
     @Override
@@ -154,7 +169,7 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
 
         Map<UUID, VehicleMotionSnapshot> knownMotionStates = loadKnownMotionStates(messages);
         List<VehicleMotionUpdate> motionUpdates = motionStreakTracker.computeUpdates(knownMotionStates, messages);
-        List<TelemetryMessage> liveEligibleMessages = selectLiveEligibleMessages(knownMotionStates, messages);
+        LiveEligibleBatch liveEligible = selectLiveEligibleBatch(knownMotionStates, messages, motionUpdates);
 
         jdbcTemplate.batchUpdate(UPSERT_VEHICLE_STATE_SQL, new BatchPreparedStatementSetter() {
             @Override
@@ -176,8 +191,18 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
             }
         });
 
-        geofenceRuleDispatcher.evaluateAndDispatch(liveEligibleMessages);
-        etaRecalculationDispatcher.recalculateAndDispatch(liveEligibleMessages);
+        geofenceRuleDispatcher.evaluateAndDispatch(liveEligible.messages());
+        etaRecalculationDispatcher.recalculateAndDispatch(liveEligible.messages());
+        alertRuleDispatcher.evaluateAndDispatch(liveEligible.messages(), liveEligible.motionUpdates());
+    }
+
+    // A message and its already-computed VehicleMotionUpdate, paired
+    // together for AlertRuleDispatcher's own excessive-idle detection -- see
+    // this class's own comment above for why. messages()/motionUpdates() are
+    // index-aligned lists (not a List<record> of pairs) so
+    // geofenceRuleDispatcher/etaRecalculationDispatcher above can keep
+    // consuming a plain List<TelemetryMessage>, unchanged.
+    private record LiveEligibleBatch(List<TelemetryMessage> messages, List<VehicleMotionUpdate> motionUpdates) {
     }
 
     // See this class's own comment above for why this mirrors
@@ -189,21 +214,24 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
     // second eligible message for the same vehicle within this batch is
     // correctly compared against the first message's recordedAt, not
     // against stale pre-batch state.
-    private static List<TelemetryMessage> selectLiveEligibleMessages(
-        Map<UUID, VehicleMotionSnapshot> knownMotionStates, List<TelemetryMessage> messages
+    private static LiveEligibleBatch selectLiveEligibleBatch(
+        Map<UUID, VehicleMotionSnapshot> knownMotionStates, List<TelemetryMessage> messages, List<VehicleMotionUpdate> motionUpdates
     ) {
         Map<UUID, Instant> lastKnownRecordedAt = new HashMap<>();
         knownMotionStates.forEach((vehicleId, snapshot) -> lastKnownRecordedAt.put(vehicleId, snapshot.recordedAt()));
 
-        List<TelemetryMessage> eligible = new ArrayList<>();
-        for (TelemetryMessage message : messages) {
+        List<TelemetryMessage> eligibleMessages = new ArrayList<>();
+        List<VehicleMotionUpdate> eligibleMotionUpdates = new ArrayList<>();
+        for (int i = 0; i < messages.size(); i++) {
+            TelemetryMessage message = messages.get(i);
             Instant known = lastKnownRecordedAt.get(message.vehicleId());
             if (known == null || message.recordedAt().isAfter(known)) {
-                eligible.add(message);
+                eligibleMessages.add(message);
+                eligibleMotionUpdates.add(motionUpdates.get(i));
                 lastKnownRecordedAt.put(message.vehicleId(), message.recordedAt());
             }
         }
-        return eligible;
+        return new LiveEligibleBatch(eligibleMessages, eligibleMotionUpdates);
     }
 
     // One upfront lookup per flush batch for every distinct vehicle involved,

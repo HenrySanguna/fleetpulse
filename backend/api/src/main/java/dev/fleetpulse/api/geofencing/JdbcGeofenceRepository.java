@@ -19,7 +19,7 @@ import java.util.UUID;
 // Task 5.2 (backend half, WU6 -- the gap documented in tasks.md's Review
 // Workload Forecast). No JPA entity for `geofences`: `area` is a PostGIS
 // GEOGRAPHY(Polygon, 4326) column, the same reason vehicle_state/positions/
-// geofence_alerts are all read/written with plain JdbcTemplate instead of
+// alerts are all read/written with plain JdbcTemplate instead of
 // Hibernate throughout this codebase (VehicleStateJdbcReader's own comment
 // documents the identical rule; GeofenceEvaluator, processor module,
 // establishes the same convention on the read side of this exact table).
@@ -60,12 +60,14 @@ class JdbcGeofenceRepository {
     // DELETE /api/geofences/{id} resolves to THIS, not a hard SQL DELETE.
     // Deviation from a literal reading of "DELETE", documented per the
     // established "note deviations" convention: vehicle_fence_state.geofence_id
-    // and geofence_alerts.geofence_id (V8/V9) both REFERENCE geofences(id)
+    // (V8) and alerts.context (V12, 06-add-trips-eta-alerts/WU3 -- formerly
+    // geofence_alerts.geofence_id, V9, before that table was retired and
+    // migrated into the unified `alerts` table) both REFERENCE geofences(id)
     // with no ON DELETE CASCADE anywhere in this schema -- a hard delete
     // would throw a foreign key violation the instant any vehicle has ever
     // been evaluated against the geofence, and cascading the delete would
-    // silently destroy geofence_alerts' "histórico" (task 4.3's own stated
-    // purpose) the same way this codebase never discards positions either.
+    // silently destroy alerts' "histórico" (task 4.3's own stated purpose)
+    // the same way this codebase never discards positions either.
     // `is_active` already exists in the schema (design.md's own sketch) for
     // exactly this purpose, and GeofenceEvaluator's containment query
     // already filters `AND is_active` (task 2.1) -- soft-deleting via this
