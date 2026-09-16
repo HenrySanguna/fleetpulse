@@ -1,5 +1,9 @@
 package dev.fleetpulse.processor.eta;
 
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
 import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
@@ -174,7 +178,8 @@ class EtaEndToEndTest {
     private static JdbcTelemetryPositionWriter newWriter(List<PublishedEta> published) {
         JdbcTemplate jdbcTemplate = newJdbcTemplate();
         return new JdbcTelemetryPositionWriter(
-            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate), newEtaRecalculationDispatcher(jdbcTemplate, published)
+            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate),
+            newEtaRecalculationDispatcher(jdbcTemplate, published), newAlertRuleDispatcher(jdbcTemplate)
         );
     }
 
@@ -203,6 +208,19 @@ class EtaEndToEndTest {
             (organizationId, vehicleId, estimate, calculatedAt) ->
                 published.add(new PublishedEta(organizationId, vehicleId, estimate)),
             etaProperties
+        );
+    }
+
+    // Task 3.2/WU3: this test proves ETA recalculation, not alerting -- same
+    // "no-op publisher, real writer/silence-state store" reasoning
+    // newGeofenceRuleDispatcher's own comment documents for geofencing.
+    private static AlertRuleDispatcher newAlertRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new AlertRuleDispatcher(
+            jdbcTemplate,
+            new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)),
+            new JdbcAlertWriter(jdbcTemplate),
+            alert -> { },
+            new JdbcAlertSilenceStateStore(jdbcTemplate)
         );
     }
 

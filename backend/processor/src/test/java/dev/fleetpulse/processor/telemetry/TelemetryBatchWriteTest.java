@@ -1,5 +1,9 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
 import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
@@ -173,7 +177,8 @@ class TelemetryBatchWriteTest {
     private static JdbcTelemetryPositionWriter newWriter() {
         JdbcTemplate jdbcTemplate = newJdbcTemplate();
         return new JdbcTelemetryPositionWriter(
-            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate), newEtaRecalculationDispatcher(jdbcTemplate)
+            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate),
+            newEtaRecalculationDispatcher(jdbcTemplate), newAlertRuleDispatcher(jdbcTemplate)
         );
     }
 
@@ -211,6 +216,23 @@ class TelemetryBatchWriteTest {
             new JdbcVehicleDestinationEtaWriter(jdbcTemplate),
             (organizationId, vehicleId, estimate, calculatedAt) -> { },
             etaProperties
+        );
+    }
+
+    // Task 3.2/WU3: no sustained speeding/idle condition is ever produced by
+    // this test, so this dispatcher always evaluates false conditions --
+    // wired with the real writer/silence-state store against the same
+    // database, but a no-op AlertPublisher, mirroring
+    // newGeofenceRuleDispatcher's own identical reasoning above
+    // (AlertSilenceEngineTest/AlertRuleEndToEndTest already cover the
+    // alerting behavior itself).
+    private static AlertRuleDispatcher newAlertRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new AlertRuleDispatcher(
+            jdbcTemplate,
+            new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)),
+            new JdbcAlertWriter(jdbcTemplate),
+            alert -> { },
+            new JdbcAlertSilenceStateStore(jdbcTemplate)
         );
     }
 

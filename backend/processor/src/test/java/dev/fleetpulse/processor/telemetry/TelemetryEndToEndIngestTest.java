@@ -1,5 +1,10 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.alerts.AlertPublisher;
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
 import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
@@ -204,6 +209,12 @@ class TelemetryEndToEndIngestTest {
         // cover that).
         ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
         ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
+        // Task 3.2/WU3: this test proves telemetry ingestion, not alerting --
+        // same "no-op publisher" reasoning as GeofenceAlertPublisher/EtaPublisher
+        // above.
+        ctx.registerBean(FleetpulseAlertingProperties.class,
+            () -> new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)));
+        ctx.registerBean(AlertPublisher.class, () -> alert -> { });
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -216,6 +227,7 @@ class TelemetryEndToEndIngestTest {
             GeofenceEvaluator.class, JdbcVehicleFenceStateWriter.class, JdbcGeofenceAlertWriter.class, GeofenceRuleDispatcher.class,
             JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
             JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
+            JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, AlertRuleDispatcher.class,
             JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
