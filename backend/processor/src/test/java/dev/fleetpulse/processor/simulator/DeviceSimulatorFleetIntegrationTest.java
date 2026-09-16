@@ -8,7 +8,9 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -32,8 +34,12 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 class DeviceSimulatorFleetIntegrationTest {
 
+    // TODO(issue #36): temporary diagnostic log consumer to capture the
+    // broker's own view of the publish/retain/subscribe sequence from a live
+    // CI run -- remove once the flake is root-caused.
     @Container
-    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer();
+    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer()
+        .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("mosquitto.DeviceSimulatorFleetIntegrationTest")));
 
     private static final String ORG_ID = "org-1";
 

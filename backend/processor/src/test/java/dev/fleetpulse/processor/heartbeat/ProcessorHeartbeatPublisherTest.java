@@ -8,9 +8,11 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -28,8 +30,12 @@ class ProcessorHeartbeatPublisherTest {
     // 02-add-fleet-auth (tasks 5.1/5.2): the real mosquitto.conf now denies
     // anonymous connections, so this test's broker must be bootstrapped the
     // same way docker-compose.yml's mosquitto service is.
+    // TODO(issue #36): temporary diagnostic log consumer to capture the
+    // broker's own view of the publish/retain/subscribe sequence from a live
+    // CI run -- remove once the flake is root-caused.
     @Container
-    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer();
+    static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer()
+        .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("mosquitto.ProcessorHeartbeatPublisherTest")));
 
     private static final String HEARTBEAT_TOPIC = "fleetpulse/processor/heartbeat-test";
 
