@@ -120,6 +120,13 @@ class ProcessorHeartbeatPublisherTest {
             client.connect(options);
             client.subscribe(HEARTBEAT_TOPIC, 1);
             return received.get(15, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException ex) {
+            // TODO(issue #36): temporary diagnostic -- surface the broker's
+            // own logs in the failure message since Gradle does not stream
+            // captured test stdout to the CI console.
+            throw new java.util.concurrent.TimeoutException(
+                "No retained message received within 15s. Mosquitto broker logs:\n" + mosquitto.getLogs()
+            );
         } finally {
             client.disconnect();
             client.close();

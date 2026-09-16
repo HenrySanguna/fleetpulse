@@ -70,7 +70,14 @@ class DeviceSimulatorFleetIntegrationTest {
 
         List<String> received = subscribeAndCapture(statusTopic(vehicleId));
 
-        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(received).contains("{\"online\":true}"));
+        try {
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(received).contains("{\"online\":true}"));
+        } catch (Throwable ex) {
+            // TODO(issue #36): temporary diagnostic -- surface the broker's
+            // own logs in the failure message since Gradle does not stream
+            // captured test stdout to the CI console.
+            throw new AssertionError(ex.getMessage() + "\n\nMosquitto broker logs:\n" + mosquitto.getLogs(), ex);
+        }
     }
 
     // WU3 wire contract: telemetry the simulator publishes must parse
