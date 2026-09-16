@@ -126,38 +126,19 @@ jobs:
             return 1
           }
 
-          # TODO(issue #36 follow-up): temporary diagnostic -- this job never
-          # ran before PR #55 fixed the "affected" job it was gated behind,
-          # so this is its first-ever real execution and ci-api goes
-          # unhealthy with no clue why in the container's own (access-log-
-          # free) stdout. Dump both containers' logs and the actual health
-          # JSON body, not just the failing container's. Remove once
-          # root-caused.
-          dump_diagnostics() {
-            echo "--- docker inspect ci-api health ---"
-            docker inspect ci-api --format '{{json .State.Health}}' || true
-            echo "--- docker logs ci-api ---"
-            docker logs ci-api || true
-            echo "--- docker logs ci-processor ---"
-            docker logs ci-processor || true
-            echo "--- curl /actuator/health ---"
-            curl -s http://localhost:8080/actuator/health || true
-            echo
-          }
-
           wait_healthy() {
             for _ in $(seq 1 40); do
               status=$(docker inspect --format='{{.State.Health.Status}}' "$1")
               [ "$status" = "healthy" ] && return 0
               if [ "$status" = "unhealthy" ]; then
                 echo "$1 reported unhealthy:" >&2
-                dump_diagnostics
+                docker logs "$1"
                 return 1
               fi
               sleep 3
             done
             echo "$1 did not become healthy in time:" >&2
-            dump_diagnostics
+            docker logs "$1"
             return 1
           }
 
