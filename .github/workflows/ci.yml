@@ -71,6 +71,23 @@ jobs:
       - name: nx affected -- lint, test, build
         run: npx nx affected -t lint test build --parallel=3 --outputStyle=static
 
+      # TODO(issue #36): temporary diagnostic -- Gradle's console summary only
+      # prints "ExceptionType at File:Line" for a failing test, never the
+      # message or stack trace (those only land in the XML/HTML report on
+      # disk), so there is no other way to see a failing assertion's full
+      # detail (including the Mosquitto broker logs now embedded in it) from
+      # a CI run. Remove once the flake is root-caused.
+      - name: Upload Gradle test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-reports
+          path: |
+            backend/**/build/test-results/**/*.xml
+            backend/**/build/reports/tests/**
+          if-no-files-found: warn
+          retention-days: 3
+
       # Runs on every CI run, not scoped to "affected": libs/api-client can
       # go stale from a hand-edit even on a commit where nx does not
       # consider backend/api itself affected (tasks 6.1 and 4.3).
