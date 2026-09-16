@@ -98,12 +98,23 @@ jobs:
 
           network=$(docker network ls --filter label=com.docker.compose.project=fleetpulse-ci --format '{{.Name}}')
 
+          # FLEETPULSE_MQTT_SERVICE_USERNAME/PASSWORD must match
+          # docker-compose.yml's MOSQUITTO_DYNSEC_SERVICE_* values below --
+          # that is the "internal-services" dynsec identity
+          # bootstrap-and-run.sh provisions on this same Mosquitto container.
+          # FleetpulseMqttServiceCredentialsProperties (both modules) is
+          # deliberately not @NotBlank, so omitting these does not fail
+          # startup -- api/processor just connect with blank credentials and
+          # get rejected at the MQTT layer instead (mqttBroker/
+          # processorHeartbeat DOWN, never UP).
           run_common=(
             -e SPRING_PROFILES_ACTIVE=prod
             -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgis:5432/fleetpulse
             -e SPRING_DATASOURCE_USERNAME=fleetpulse
             -e SPRING_DATASOURCE_PASSWORD=fleetpulse
             -e FLEETPULSE_MQTT_BROKERURL=tcp://mosquitto:1883
+            -e FLEETPULSE_MQTT_SERVICE_USERNAME=internal-services
+            -e FLEETPULSE_MQTT_SERVICE_PASSWORD=fleetpulse-dynsec-service
           )
 
           wait_http() {
