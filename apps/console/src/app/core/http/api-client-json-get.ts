@@ -60,6 +60,14 @@ export function putJson<T>(http: HttpClient, configuration: Configuration, path:
   return http.put<T>(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials });
 }
 
+// Same gap as getJson()/postJson()/putJson() above -- confirmed while wiring
+// AlertsService (task 3.4): a generated bodyless PATCH method would hit the
+// identical responseType:'blob' misclassification. Bypasses the generated
+// method the same way.
+export function patchJson<T>(http: HttpClient, configuration: Configuration, path: string): Observable<T> {
+  return http.patch<T>(`${configuration.basePath}${path}`, null, { withCredentials: configuration.withCredentials });
+}
+
 // `/login` and `/logout` (Task 5.4/auth) aren't part of the OpenAPI-generated
 // surface at all -- they're Spring Security's own default endpoints, not
 // backed by a generated *ControllerService -- so this isn't the Accept-header

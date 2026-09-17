@@ -7,6 +7,7 @@ export type AlertSeverity = 'success' | 'warning' | 'danger' | 'neutral';
 const SEVERITY_BY_TYPE: Record<Alert['type'], AlertSeverity> = {
   geofence_enter: 'success',
   geofence_exit: 'neutral',
+  geofence_dwell: 'neutral',
   speeding: 'danger',
   excessive_idle: 'warning',
   offline: 'danger',
@@ -107,6 +108,10 @@ export class AlertsPageComponent implements OnInit {
 
   protected onSearchInput(event: Event): void {
     this.store.setSearchQuery((event.target as HTMLInputElement).value);
+  }
+
+  protected acknowledge(id: string): void {
+    this.store.acknowledge(id);
   }
 
   protected severityOf(type: Alert['type']): AlertSeverity {
