@@ -1,3 +1,6 @@
+export * from './activityReportController.service';
+import { ActivityReportControllerService } from './activityReportController.service';
+export * from './activityReportController.serviceInterface';
 export * from './alertsController.service';
 import { AlertsControllerService } from './alertsController.service';
 export * from './alertsController.serviceInterface';
@@ -22,4 +25,4 @@ export * from './vehicleDestinationController.serviceInterface';
 export * from './vehicleTrackController.service';
 import { VehicleTrackControllerService } from './vehicleTrackController.service';
 export * from './vehicleTrackController.serviceInterface';
-export const APIS = [AlertsControllerService, DeviceCredentialControllerService, DispatcherSessionControllerService, FleetStateControllerService, GeofenceControllerService, MqttCredentialsControllerService, VehicleDestinationControllerService, VehicleTrackControllerService];
+export const APIS = [ActivityReportControllerService, AlertsControllerService, DeviceCredentialControllerService, DispatcherSessionControllerService, FleetStateControllerService, GeofenceControllerService, MqttCredentialsControllerService, VehicleDestinationControllerService, VehicleTrackControllerService];
