@@ -71,6 +71,12 @@
                   <path d="M17 10H7.5" />
                 </svg>
               }
+              @case ('geofence_dwell') {
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 2.5 17 7v6l-7 4.5L3 13V7z" />
+                  <circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none" />
+                </svg>
+              }
               @case ('speeding') {
                 <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 13a7 7 0 1 1 14 0" />
@@ -100,6 +106,14 @@
             <span class="tag tag-ack">Reconocida</span>
           } @else {
             <span class="tag tag-new">Nueva</span>
+            <button
+              type="button"
+              class="ack-button"
+              [attr.data-testid]="'alert-acknowledge-' + alert.id"
+              (click)="acknowledge(alert.id)"
+            >
+              Marcar como atendida
+            </button>
           }
           <div class="alert-time">{{ formatTime(alert.occurredAt) }}</div>
         </div>

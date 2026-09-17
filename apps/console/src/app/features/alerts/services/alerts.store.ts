@@ -24,7 +24,7 @@ function matchesTypeFilter(alert: Alert, filter: AlertTypeFilter): boolean {
     return true;
   }
   if (filter === 'geofence') {
-    return alert.type === 'geofence_enter' || alert.type === 'geofence_exit';
+    return alert.type === 'geofence_enter' || alert.type === 'geofence_exit' || alert.type === 'geofence_dwell';
   }
   return alert.type === filter;
 }
@@ -69,6 +69,21 @@ export const AlertsStore = signalStore(
 
       setSearchQuery(searchQuery: string): void {
         patchState(store, { searchQuery });
+      },
+
+      // Task 3.4 ("marcado como atendida"): replaces the acknowledged alert
+      // in place with the server's own response (never a blind local
+      // acknowledged: true patch) -- PATCH .../acknowledge is the source of
+      // truth for the row, the same "mutate, then trust the response" shape
+      // VehicleDestinationService.assign() already established server-side.
+      acknowledge(id: string): void {
+        alertsService.acknowledge(id).subscribe({
+          next: (updated) => patchState(store, { alerts: store.alerts().map((alert) => (alert.id === id ? updated : alert)) }),
+          error: (error: unknown) => {
+            console.error('AlertsStore: failed to acknowledge alert', id, error);
+            patchState(store, { error: 'No se pudo marcar la alerta como atendida' });
+          },
+        });
       },
 
       reset(): void {

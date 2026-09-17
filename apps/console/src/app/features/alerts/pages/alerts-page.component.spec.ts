@@ -40,10 +40,10 @@ const ALERTS: Alert[] = [
 ];
 
 describe('AlertsPageComponent', () => {
-  let alertsService: { list: ReturnType<typeof vi.fn> };
+  let alertsService: { list: ReturnType<typeof vi.fn>; acknowledge: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    alertsService = { list: vi.fn(() => of(ALERTS)) };
+    alertsService = { list: vi.fn(() => of(ALERTS)), acknowledge: vi.fn() };
     TestBed.configureTestingModule({
       providers: [{ provide: AlertsService, useValue: alertsService }],
     });
@@ -141,5 +141,28 @@ describe('AlertsPageComponent', () => {
 
     expect(cardIds(fixture)).toEqual([]);
     expect(fixture.nativeElement.textContent).toContain('No hay alertas que coincidan con el filtro.');
+  });
+
+  it('shows a mark-as-attended button only for unacknowledged alerts', () => {
+    const fixture = createFixture();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a1"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a2"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a3"]')).toBeNull();
+  });
+
+  it('clicking the mark-as-attended button acknowledges that alert and replaces its tag', () => {
+    const acknowledged: Alert = { ...ALERTS[0], acknowledged: true };
+    alertsService.acknowledge.mockReturnValue(of(acknowledged));
+    const fixture = createFixture();
+
+    const button = fixture.debugElement.query(By.css('[data-testid="alert-acknowledge-a1"]'));
+    button.triggerEventHandler('click', undefined);
+    fixture.detectChanges();
+
+    expect(alertsService.acknowledge).toHaveBeenCalledWith('a1');
+    expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a1"]')).toBeNull();
+    const card = fixture.debugElement.query(By.css('[data-testid="alert-a1"]'));
+    expect(card.nativeElement.textContent).toContain('Reconocida');
   });
 });

@@ -1,3 +1,4 @@
+export * from './alertResponse';
 export * from './deviceCredentialResponse';
 export * from './dispatcherSelfView';
 export * from './fleetStateResponse';

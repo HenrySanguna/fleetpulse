@@ -3,6 +3,8 @@
 README.md
 api.base.service.ts
 api.module.ts
+api/alertsController.service.ts
+api/alertsController.serviceInterface.ts
 api/api.ts
 api/deviceCredentialController.service.ts
 api/deviceCredentialController.serviceInterface.ts
@@ -22,6 +24,7 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/alertResponse.ts
 model/deviceCredentialResponse.ts
 model/dispatcherSelfView.ts
 model/fleetStateResponse.ts
