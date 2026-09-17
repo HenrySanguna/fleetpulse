@@ -1,6 +1,7 @@
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { ActivityReport, ActivityVehicleOption } from '../models/activity-report.model';
+import { defaultActivityReportRange } from './activity-report-range';
 import { ActivityReportService } from './activity-report.service';
 
 interface ActivityReportStoreState {
@@ -45,8 +46,9 @@ export const ActivityReportStore = signalStore(
         return;
       }
       const requestId = ++latestRequestId;
+      const range = defaultActivityReportRange();
       patchState(store, { loading: true, error: undefined });
-      activityReportService.getReport(vehicleId).subscribe({
+      activityReportService.getReport(vehicleId, range.from.toISOString(), range.to.toISOString()).subscribe({
         next: (report) => {
           if (requestId === latestRequestId) {
             patchState(store, { report, loading: false });

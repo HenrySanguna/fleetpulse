@@ -3,6 +3,8 @@
 README.md
 api.base.service.ts
 api.module.ts
+api/activityReportController.service.ts
+api/activityReportController.serviceInterface.ts
 api/alertsController.service.ts
 api/alertsController.serviceInterface.ts
 api/api.ts
@@ -24,7 +26,11 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/activityReportResponse.ts
+model/activityReportSummaryResponse.ts
+model/activityTripResponse.ts
 model/alertResponse.ts
+model/dailyDistancePointResponse.ts
 model/deviceCredentialResponse.ts
 model/dispatcherSelfView.ts
 model/fleetStateResponse.ts
