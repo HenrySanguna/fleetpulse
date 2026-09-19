@@ -10,20 +10,47 @@
 # .github/workflows/ci.yml's docker-and-compose-smoke job (task 6.2), which
 # resolves postgis/mosquitto the same way.
 #
-# Deployed by the deploy-oracle job in .github/workflows/ci.yml: this file
-# and docker/mosquitto/mosquitto.prod.conf are rsynced to the VM, then
+# Deployed by the deploy-oracle job in .github/workflows/ci.yml: this file,
+# docker/mosquitto/mosquitto.prod.conf, docker/mosquitto/bootstrap-and-run.sh
+# and docker/caddy/Caddyfile are rsynced to the VM, then
 # `docker compose -f docker-compose.prod.yml pull && ... up -d` runs over
 # SSH. Requires a .env file already present next to this file on the VM
 # (not committed -- see tasks.md task 6.5's manual setup list) providing
 # SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME /
 # SPRING_DATASOURCE_PASSWORD for the real Neon database -- Neon itself is
-# unaffected by this migration, only the compute target changed.
+# unaffected by this migration, only the compute target changed. Also
+# requires FLEETPULSE_PUBLIC_HOSTNAME (see caddy's own comment below) and
+# the MOSQUITTO_DYNSEC_* vars (see mosquitto's own comment below).
 #
-# api is the only service with a published port: processor exposes no HTTP
-# (design.md, "Salud") and mosquitto stays private, same posture as the
-# retired fly-broker.toml -- no public/WS broker access until change
+# caddy is the only service with a published port (80/443): the console
+# (Cloudflare Pages, always HTTPS) cannot call a plain-HTTP api at all --
+# browsers block that as mixed content regardless of credentials being
+# otherwise valid, found live the first time a real browser (not curl, which
+# never enforces this) tried to log in. FLEETPULSE_PUBLIC_HOSTNAME (the VM's
+# untracked .env) is a *.nip.io hostname wrapping this VM's own IP so Caddy
+# can obtain a real Let's Encrypt certificate without owning a domain --
+# swap it for a real domain later with no other change needed. api/processor
+# expose no public port of their own; mosquitto stays private, same posture
+# as the retired fly-broker.toml -- no public/WS broker access until change
 # 02-add-fleet-auth lands real ACLs.
 services:
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      FLEETPULSE_PUBLIC_HOSTNAME: ${FLEETPULSE_PUBLIC_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - fleetpulse
+
   mosquitto:
     image: eclipse-mosquitto:2
     environment:
@@ -69,8 +96,8 @@ services:
       # /api/mqtt/credentials still returns this value today, no client can use it yet.
       FLEETPULSE_MQTT_BROWSER_WSURL: ${FLEETPULSE_MQTT_BROWSER_WSURL:-ws://mosquitto:9001}
       FLEETPULSE_MQTT_BROWSER_CREDENTIALTTL: PT5M
-    ports:
-      - "8080:8080"
+    # No published port: caddy is the only public entry point now (see its
+    # own comment above). Reachable within the compose network as api:8080.
     # Not required for correctness -- MqttClientFactoryConfig catches
     # MqttException and reports DOWN instead of failing startup -- just
     # cleaner boot ordering (same reasoning documented for the retired
@@ -105,3 +132,9 @@ services:
 networks:
   fleetpulse:
     driver: bridge
+
+volumes:
+  # Persists caddy's issued certificate across container recreation so every
+  # deploy doesn't re-request one from Let's Encrypt (rate-limited).
+  caddy-data:
+  caddy-config:
