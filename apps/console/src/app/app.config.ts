@@ -10,6 +10,7 @@ import { providePrimeNG } from 'primeng/config';
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 import { appRoutes } from './app.routes';
+import { environment } from '../environments/environment';
 
 // Design tokens: the mockups' primary `#2563eb` is exactly Tailwind's
 // `blue-600`, and `@primeuix/themes/aura/base`'s own primitive `blue` scale
@@ -45,7 +46,12 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withFetch()),
     // `withCredentials: true`: the api sits behind a session cookie +
     // `X-XSRF-TOKEN` (SecurityConfig's `csrf().spa()`), not a bearer token.
-    provideApi({ withCredentials: true }),
+    // `basePath` was previously left unset, silently falling back to the
+    // generated client's own `http://localhost:8099` default in every
+    // build, including production -- this is what environment.ts/
+    // environment.prod.ts (wired via project.json's `fileReplacements`) now
+    // fixes.
+    provideApi({ basePath: environment.apiUrl, withCredentials: true }),
     // Task 5.1: `libs/console-ui`'s components are built on PrimeNG. The
     // `dark mode via CSS class` selector is left at its default (`.p-dark`)
     // -- no dark-mode toggle exists yet, out of scope for this change.
