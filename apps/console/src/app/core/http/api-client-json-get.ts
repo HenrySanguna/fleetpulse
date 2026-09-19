@@ -75,8 +75,30 @@ export function patchJson<T>(http: HttpClient, configuration: Configuration, pat
 // (not JSON) and reply with an empty 200 body, which HttpClient's default
 // `responseType: 'json'` would throw a parse error on. `responseType: 'text'`
 // avoids that; the resolved text (always empty on success) is discarded.
+//
+// Gap found live testing a real login through a real browser (curl never
+// exercises HttpClient's own body-type detection, so this stayed invisible
+// through every earlier manual check): HttpRequest.detectContentTypeHeader()
+// (@angular/common's _module-chunk.mjs) only special-cases Angular's OWN
+// `HttpParams` class for the form-urlencoded content type -- a native
+// `URLSearchParams` instance (what this function's own signature takes, and
+// what serializeBody() DOES correctly special-case for the wire body itself)
+// falls through to the generic `typeof body === 'object'` branch and gets
+// silently labeled `application/json` instead, even though the actual bytes
+// sent are the correct `username=...&password=...` form encoding. Spring
+// Security's formLogin then parses the request as un-form-decoded JSON,
+// finds no username/password parameters, and authenticates as empty
+// credentials -- a real 401, not a network-level failure, so it looked like
+// a genuine bad-credentials error rather than a serialization bug. Setting
+// the header explicitly sidesteps Angular's detection entirely rather than
+// switching to HttpParams, since URLSearchParams is the standard web API and
+// the caller (AuthService) already builds one.
 export function postForm(http: HttpClient, configuration: Configuration, path: string, body: URLSearchParams): Observable<void> {
   return http
-    .post(`${configuration.basePath}${path}`, body, { withCredentials: configuration.withCredentials, responseType: 'text' })
+    .post(`${configuration.basePath}${path}`, body, {
+      withCredentials: configuration.withCredentials,
+      responseType: 'text',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
     .pipe(map(() => undefined));
 }
