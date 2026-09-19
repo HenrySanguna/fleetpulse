@@ -291,6 +291,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Single source of truth for the deployed console's API target:
+      # environment.prod.ts ships a literal placeholder (never a real
+      # endpoint) that this substitutes with the same vars.PROD_API_URL
+      # verify-deploy already reads, avoiding a second hardcoded URL that
+      # could drift from it.
+      - name: Point production build at the deployed API
+        run: |
+          sed -i "s|__PROD_API_URL__|${{ vars.PROD_API_URL }}|" apps/console/src/environments/environment.prod.ts
       - run: npx nx build console --configuration=production
       - uses: cloudflare/wrangler-action@v3
         with:
