@@ -42,6 +42,13 @@ describe('AuthService', () => {
     expect(request.request.body).toBeInstanceOf(URLSearchParams);
     expect((request.request.body as URLSearchParams).get('username')).toBe('dispatcher@example.com');
     expect((request.request.body as URLSearchParams).get('password')).toBe('s3cret');
+    // Regression guard: HttpRequest.detectContentTypeHeader() only special-cases
+    // Angular's own HttpParams for form-urlencoded, not a native URLSearchParams
+    // -- without the explicit header in postForm(), this silently sends
+    // application/json with a correctly form-encoded body, which Spring Security
+    // parses as zero form fields and rejects as bad credentials (a real 401 that
+    // looks like an auth bug, not a serialization one). Found live in production.
+    expect(request.request.headers.get('Content-Type')).toBe('application/x-www-form-urlencoded');
 
     request.flush('');
 
