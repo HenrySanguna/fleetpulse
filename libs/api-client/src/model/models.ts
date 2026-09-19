@@ -1,3 +1,8 @@
+export * from './activityReportResponse';
+export * from './activityReportSummaryResponse';
+export * from './activityTripResponse';
+export * from './alertResponse';
+export * from './dailyDistancePointResponse';
 export * from './deviceCredentialResponse';
 export * from './dispatcherSelfView';
 export * from './fleetStateResponse';
@@ -7,4 +12,5 @@ export * from './geofenceRequest';
 export * from './geofenceResponse';
 export * from './mqttCredentialsResponse';
 export * from './trackPointResponse';
+export * from './vehicleDestinationResponse';
 export * from './vehicleStateResponse';

@@ -5,7 +5,7 @@ import { AlertsService } from './alerts.service';
 import { AlertsStore } from './alerts.store';
 
 describe('AlertsStore', () => {
-  let alertsService: { list: ReturnType<typeof vi.fn> };
+  let alertsService: { list: ReturnType<typeof vi.fn>; acknowledge: ReturnType<typeof vi.fn> };
   let store: InstanceType<typeof AlertsStore>;
 
   const alerts: Alert[] = [
@@ -39,7 +39,7 @@ describe('AlertsStore', () => {
   ];
 
   beforeEach(() => {
-    alertsService = { list: vi.fn() };
+    alertsService = { list: vi.fn(), acknowledge: vi.fn() };
     TestBed.configureTestingModule({
       providers: [{ provide: AlertsService, useValue: alertsService }],
     });
@@ -116,6 +116,33 @@ describe('AlertsStore', () => {
       store.setSearchQuery('05');
 
       expect(store.filteredAlerts().map((a) => a.id)).toEqual(['a3']);
+    });
+  });
+
+  describe('acknowledge', () => {
+    beforeEach(() => {
+      alertsService.list.mockReturnValue(of(alerts));
+      store.load();
+    });
+
+    it('replaces the acknowledged alert in place with the service response', () => {
+      const updated: Alert = { ...alerts[0], acknowledged: true };
+      alertsService.acknowledge.mockReturnValue(of(updated));
+
+      store.acknowledge('a1');
+
+      expect(alertsService.acknowledge).toHaveBeenCalledWith('a1');
+      expect(store.alerts().find((a) => a.id === 'a1')?.acknowledged).toBe(true);
+      expect(store.alerts()).toHaveLength(3);
+    });
+
+    it('records an error and leaves the alert untouched when the service errors', () => {
+      alertsService.acknowledge.mockReturnValue(throwError(() => new Error('boom')));
+
+      store.acknowledge('a1');
+
+      expect(store.error()).toBe('No se pudo marcar la alerta como atendida');
+      expect(store.alerts().find((a) => a.id === 'a1')?.acknowledged).toBe(false);
     });
   });
 });

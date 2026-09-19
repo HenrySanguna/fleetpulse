@@ -91,11 +91,11 @@
             </tr>
           </thead>
           <tbody class="mono">
-            @for (trip of trips(); track trip.date + trip.startTime) {
+            @for (trip of trips(); track trip.id) {
               <tr data-testid="activity-trip-row">
-                <td>{{ trip.date }}</td>
-                <td>{{ trip.startTime }}</td>
-                <td>{{ trip.endTime }}</td>
+                <td>{{ formatTripDate(trip) }}</td>
+                <td>{{ formatTripStart(trip) }}</td>
+                <td>{{ formatTripEnd(trip) }}</td>
                 <td class="num">{{ trip.distanceKm.toFixed(1) }} km</td>
                 <td class="num">{{ formatTripDuration(trip) }}</td>
                 <td class="num">{{ formatTripIdle(trip) }}</td>

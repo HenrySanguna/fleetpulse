@@ -52,8 +52,8 @@ public class GeofenceService {
     // See JdbcGeofenceRepository.SOFT_DELETE_SQL's comment: this is a soft
     // delete (is_active = false), not a hard row removal -- documented
     // deviation from a literal "DELETE" reading, required by the
-    // vehicle_fence_state/geofence_alerts foreign keys having no ON DELETE
-    // CASCADE anywhere in this schema.
+    // vehicle_fence_state/alerts foreign keys having no ON DELETE CASCADE
+    // anywhere in this schema.
     public void delete(UUID id, UUID organizationId) {
         boolean deleted = repository.softDelete(id, organizationId);
         if (!deleted) {

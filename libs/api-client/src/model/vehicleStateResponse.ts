@@ -17,6 +17,11 @@ export interface VehicleStateResponse {
     recordedAt?: string;
     motionState?: VehicleStateResponse.MotionStateEnum;
     online?: boolean;
+    destinationLat?: number;
+    destinationLon?: number;
+    etaSeconds?: number;
+    etaMarginSeconds?: number;
+    etaCalculatedAt?: string;
 }
 export namespace VehicleStateResponse {
     export const MotionStateEnum = {

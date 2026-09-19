@@ -15,6 +15,14 @@ import java.util.UUID;
 // the MQTT telemetry stream directly (design.md/proposal.md's whole point:
 // the backend is not in the live data path), this endpoint only seeds the
 // initial snapshot before that stream takes over.
+// Task 2.1/2.4/2.5 (06-add-trips-eta-alerts, WU2): destinationLat/
+// destinationLon/etaSeconds/etaMarginSeconds/etaCalculatedAt are the same
+// "initial snapshot, live stream takes over" shape -- this endpoint seeds
+// whatever vehicle_destinations already holds, and EtaRecalculationDispatcher's
+// own MQTT publish (processor module, fleet/{orgId}/vehicle/{vehicleId}/eta)
+// is what keeps it current afterwards, exactly mirroring how lat/lon/
+// motionState/online already work. All five are null/absent for a vehicle
+// with no destination currently assigned.
 public record VehicleStateResponse(
     UUID vehicleId,
     String label,
@@ -22,6 +30,11 @@ public record VehicleStateResponse(
     Double lon,
     Instant recordedAt,
     MotionState motionState,
-    boolean online
+    boolean online,
+    Double destinationLat,
+    Double destinationLon,
+    Integer etaSeconds,
+    Integer etaMarginSeconds,
+    Instant etaCalculatedAt
 ) {
 }

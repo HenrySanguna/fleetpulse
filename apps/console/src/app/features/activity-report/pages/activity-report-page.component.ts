@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, type OnInit, computed, inject } from '@angular/core';
 import type { ActivityTripRow, DailyDistancePoint } from '../models/activity-report.model';
+import { defaultActivityReportRange } from '../services/activity-report-range';
 import { ActivityReportStore } from '../services/activity-report.store';
 
 interface ChartBar {
@@ -17,6 +18,17 @@ const CHART_MIN_HEIGHT_PX = 4;
 // stamping a number over all seven days.
 const CHART_LABEL_THRESHOLD_RATIO = 0.75;
 
+// Task 4.4: DailyDistancePoint.day is now a raw ISO calendar date (backend:
+// DailyDistancePointResponse.day, vehicle_daily's own UTC day column), not
+// the mock's pre-formatted Spanish weekday abbreviation -- this derives that
+// same "Lun"/"Mar"/... label from the real date, locale-correct for any
+// range rather than a fixed Mon-Sun mock week. Appending 'T00:00:00Z' keeps
+// the parse anchored to the UTC calendar day the backend means, instead of
+// letting the browser's local timezone shift it onto the neighboring day.
+function formatChartDayLabel(isoDay: string): string {
+  return new Date(`${isoDay}T00:00:00Z`).toLocaleDateString('es-ES', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+}
+
 function buildChartBars(points: readonly DailyDistancePoint[]): ChartBar[] {
   const maxDistance = Math.max(0, ...points.map((point) => point.distanceKm));
   return points.map((point) => {
@@ -26,7 +38,7 @@ function buildChartBars(points: readonly DailyDistancePoint[]): ChartBar[] {
         ? Math.max(CHART_MIN_HEIGHT_PX, Math.round((point.distanceKm / maxDistance) * CHART_MAX_HEIGHT_PX))
         : CHART_MIN_HEIGHT_PX;
     return {
-      day: point.day,
+      day: formatChartDayLabel(point.day),
       distanceKm: point.distanceKm,
       heightPx,
       hasData,
@@ -43,11 +55,12 @@ function formatHoursMinutes(totalMinutes: number): string {
 
 // Presentational-only, computed relative to "now" (like AlertsService's
 // todayAt/yesterdayAt) so it never goes stale -- not wired to any actual
-// filtering, see the page's own doc comment.
+// filtering, see the page's own doc comment. Built from the SAME
+// defaultActivityReportRange() the store uses to build its real HTTP
+// request, so this label can never silently drift from the range the
+// backend actually queried.
 function buildDateRangeLabel(): string {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(end.getDate() - 6);
+  const { from: start, to: end } = defaultActivityReportRange();
   const endLabel = end.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   // A bare day-of-month for `start` (e.g. "28 – 3 sept 2026") reads as if
   // both dates share September when the 7-day window crosses a month
@@ -56,6 +69,29 @@ function buildDateRangeLabel(): string {
   const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
   const startLabel = sameMonth ? String(start.getDate()) : start.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   return `${startLabel} – ${endLabel}`;
+}
+
+// Task 4.3: ActivityTripRow.startedAt/endedAt are now raw ISO-8601 instants
+// (backend: ActivityTripResponse), not the mock's pre-formatted date/
+// startTime/endTime strings -- same "raw data in, format at the
+// presentation layer" split AlertsPageComponent's own formatTime() already
+// established for occurredAt. Manual padStart (not Intl's `2-digit` option)
+// -- Intl's own "2-digit" numeric formatting is not reliably zero-padded
+// across this project's actual Node/ICU runtimes, the same manual
+// padStart() approach AlertsPageComponent's own dayKey() already uses for
+// exactly this reason.
+function formatShortDate(iso: string): string {
+  const date = new Date(iso);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+}
+
+function formatShortTime(iso: string): string {
+  const date = new Date(iso);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 @Component({
@@ -120,5 +156,17 @@ export class ActivityReportPageComponent implements OnInit {
 
   protected formatTripIdle(trip: ActivityTripRow): string {
     return `${formatHoursMinutes(trip.idleMinutes)}m`;
+  }
+
+  protected formatTripDate(trip: ActivityTripRow): string {
+    return formatShortDate(trip.startedAt);
+  }
+
+  protected formatTripStart(trip: ActivityTripRow): string {
+    return formatShortTime(trip.startedAt);
+  }
+
+  protected formatTripEnd(trip: ActivityTripRow): string {
+    return formatShortTime(trip.endedAt);
   }
 }

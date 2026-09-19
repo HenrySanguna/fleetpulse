@@ -2,12 +2,24 @@ package dev.fleetpulse.processor.geofencing;
 
 import dev.fleetpulse.geocore.Geo;
 import dev.fleetpulse.geocore.GeoPoint;
+import dev.fleetpulse.processor.alerts.AlertPublisher;
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
+import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttProperties;
 import dev.fleetpulse.processor.config.FleetpulseMqttServiceCredentialsProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryBufferProperties;
 import dev.fleetpulse.processor.config.FleetpulseTelemetryImplausibilityProperties;
+import dev.fleetpulse.processor.eta.EtaPublisher;
+import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
+import dev.fleetpulse.processor.eta.JdbcRecentSpeedReader;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationEtaWriter;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationReader;
+import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import dev.fleetpulse.processor.telemetry.JdbcTelemetryPositionWriter;
 import dev.fleetpulse.processor.telemetry.TelemetryImplausibilityFilter;
@@ -333,6 +345,17 @@ class GeofenceEndToEndScenarioTest {
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
         ctx.registerBean(FleetpulseGeofencingProperties.class,
             () -> new FleetpulseGeofencingProperties(confirmationReadings, confirmationDuration, 15.0));
+        // Task 2.4 (06-add-trips-eta-alerts, WU2): no destinations are ever
+        // assigned by this test -- see GeofenceAlertEndToEndTest's identical
+        // registration for the full reasoning.
+        ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
+        ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
+        // Task 3.2/WU3: this test proves the geofencing spec scenarios, not
+        // speeding/excessive-idle alerting -- same "no-op publisher, real
+        // writer/silence-state store" reasoning as GeofenceAlertEndToEndTest.
+        ctx.registerBean(FleetpulseAlertingProperties.class,
+            () -> new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)));
+        ctx.registerBean(AlertPublisher.class, () -> alert -> { });
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -341,6 +364,9 @@ class GeofenceEndToEndScenarioTest {
             TelemetryImplausibilityFilter.class, VehicleMotionStreakTracker.class,
             GeofenceEvaluator.class, JdbcVehicleFenceStateWriter.class, JdbcGeofenceAlertWriter.class,
             AlertMqttConfig.class, MqttGeofenceAlertPublisher.class, GeofenceRuleDispatcher.class,
+            JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
+            JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
+            JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, AlertRuleDispatcher.class,
             JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
@@ -446,16 +472,19 @@ class GeofenceEndToEndScenarioTest {
         }
     }
 
+    // Retargeted at the unified `alerts` table (06-add-trips-eta-alerts/WU3,
+    // task 3.1) -- see GeofenceAlertEndToEndTest's identical helper for the
+    // full reasoning.
     private static int countAlerts(UUID vehicleId, UUID geofenceId, String alertType) throws SQLException {
         try (
             Connection connection = connect();
             PreparedStatement statement = connection.prepareStatement(
-                "SELECT count(*) FROM geofence_alerts WHERE vehicle_id = ? AND geofence_id = ? AND alert_type = ?"
+                "SELECT count(*) FROM alerts WHERE vehicle_id = ? AND context = ? AND alert_type = ?"
             )
         ) {
             statement.setObject(1, vehicleId);
             statement.setObject(2, geofenceId);
-            statement.setString(3, alertType);
+            statement.setString(3, "geofence_" + alertType);
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertThat(resultSet.next()).isTrue();
                 return resultSet.getInt(1);
@@ -468,11 +497,16 @@ class GeofenceEndToEndScenarioTest {
     // typed counts above -- a bug that fired a spurious third alert (of
     // either type, on either geofence) would still be caught here even if
     // it happened to land on a geofence/type combination no other
-    // assertion in this test checks individually.
+    // assertion in this test checks individually. Deliberately NOT filtered
+    // to geofence_% alert_type values: this test never produces a
+    // speeding/excessive_idle condition either (no-op AlertPublisher, see
+    // startContext's own comment), so an unfiltered count over the unified
+    // `alerts` table proves the same thing a geofence_alerts-only count did
+    // before this table existed.
     private static int countAlerts(UUID vehicleId) throws SQLException {
         try (
             Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement("SELECT count(*) FROM geofence_alerts WHERE vehicle_id = ?")
+            PreparedStatement statement = connection.prepareStatement("SELECT count(*) FROM alerts WHERE vehicle_id = ?")
         ) {
             statement.setObject(1, vehicleId);
             try (ResultSet resultSet = statement.executeQuery()) {

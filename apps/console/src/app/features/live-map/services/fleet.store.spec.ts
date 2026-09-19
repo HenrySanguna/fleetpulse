@@ -90,6 +90,56 @@ describe('FleetStore', () => {
     );
   });
 
+  // Task 2.1/2.4: the snapshot seeds destination/eta fields the same way it
+  // already seeds lat/lon/motionState.
+  it('applySnapshot carries destination and eta fields when present', () => {
+    store.applySnapshot({
+      vehicles: [
+        {
+          vehicleId: 'v1',
+          destinationLat: 4.8,
+          destinationLon: -74.1,
+          etaSeconds: 900,
+          etaMarginSeconds: 270,
+          etaCalculatedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+    });
+
+    expect(store.vehicles().get('v1')).toEqual(
+      expect.objectContaining({
+        destinationLat: 4.8,
+        destinationLon: -74.1,
+        etaSeconds: 900,
+        etaMarginSeconds: 270,
+        etaCalculatedAt: '2026-01-01T00:00:00Z',
+      }),
+    );
+  });
+
+  // Task 2.4/2.5: a live eta update touches only the eta fields, leaving
+  // position/motion/online untouched -- the same "merge, don't replace"
+  // shape the presence merge test below already proves for its own fields.
+  it('applyUpdate merges an eta update, touching only the eta fields', () => {
+    store.applySnapshot({
+      vehicles: [{ vehicleId: 'v1', lat: 1, lon: 1, recordedAt: '2026-01-01T00:00:00Z', online: true }],
+    });
+
+    store.applyUpdate({ kind: 'eta', vehicleId: 'v1', etaSeconds: 900, etaMarginSeconds: 270, calculatedAt: '2026-01-01T00:00:05Z' });
+
+    expect(store.vehicles().get('v1')).toEqual(
+      expect.objectContaining({
+        lat: 1,
+        lon: 1,
+        recordedAt: '2026-01-01T00:00:00Z',
+        online: true,
+        etaSeconds: 900,
+        etaMarginSeconds: 270,
+        etaCalculatedAt: '2026-01-01T00:00:05Z',
+      }),
+    );
+  });
+
   it('applyUpdate merges a presence update, touching only the online flag', () => {
     store.applySnapshot({
       vehicles: [{ vehicleId: 'v1', lat: 1, lon: 1, recordedAt: '2026-01-01T00:00:00Z', online: true }],

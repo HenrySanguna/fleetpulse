@@ -13,17 +13,43 @@ const REPORTS: Record<string, ActivityReport> = {
   'VH-1042': {
     vehicleId: 'VH-1042',
     summary: { totalDistanceKm: 428.6, movingMinutes: 684, idleMinutes: 112, avgSpeedKmh: 54, maxSpeedKmh: 97 },
-    dailyDistances: [{ day: 'Lun', distanceKm: 52 }],
+    dailyDistances: [{ day: '2026-09-14', distanceKm: 52 }],
     trips: [
-      { date: '14/09', startTime: '07:02', endTime: '09:18', distanceKm: 61.2, durationMinutes: 136, idleMinutes: 8, maxSpeedKmh: 94 },
-      { date: '13/09', startTime: '06:45', endTime: '12:30', distanceKm: 88.4, durationMinutes: 190, idleMinutes: 31, maxSpeedKmh: 97 },
+      {
+        id: 't-1042-1',
+        startedAt: '2026-09-14T07:02:00Z',
+        endedAt: '2026-09-14T09:18:00Z',
+        distanceKm: 61.2,
+        durationMinutes: 136,
+        idleMinutes: 8,
+        maxSpeedKmh: 94,
+      },
+      {
+        id: 't-1042-2',
+        startedAt: '2026-09-13T06:45:00Z',
+        endedAt: '2026-09-13T12:30:00Z',
+        distanceKm: 88.4,
+        durationMinutes: 190,
+        idleMinutes: 31,
+        maxSpeedKmh: 97,
+      },
     ],
   },
   'VH-0892': {
     vehicleId: 'VH-0892',
     summary: { totalDistanceKm: 156.4, movingMinutes: 402, idleMinutes: 168, avgSpeedKmh: 33, maxSpeedKmh: 71 },
-    dailyDistances: [{ day: 'Lun', distanceKm: 18.2 }],
-    trips: [{ date: '14/09', startTime: '08:10', endTime: '09:40', distanceKm: 14.6, durationMinutes: 90, idleMinutes: 22, maxSpeedKmh: 58 }],
+    dailyDistances: [{ day: '2026-09-14', distanceKm: 18.2 }],
+    trips: [
+      {
+        id: 't-0892-1',
+        startedAt: '2026-09-14T08:10:00Z',
+        endedAt: '2026-09-14T09:40:00Z',
+        distanceKm: 14.6,
+        durationMinutes: 90,
+        idleMinutes: 22,
+        maxSpeedKmh: 58,
+      },
+    ],
   },
 };
 
@@ -55,9 +81,34 @@ describe('ActivityReportPageComponent', () => {
     const fixture = createFixture();
 
     expect(activityReportService.listVehicles).toHaveBeenCalledTimes(1);
-    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042');
+    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042', expect.any(String), expect.any(String));
     expect(statValue(fixture, 'stat-distance')).toContain('428.6');
     expect(fixture.nativeElement.querySelectorAll('[data-testid="activity-trip-row"]').length).toBe(2);
+  });
+
+  // Task 4.3: trips now carry raw ISO-8601 startedAt/endedAt (not the mock's
+  // pre-formatted date/startTime/endTime strings) -- asserts on SHAPE
+  // (DD/MM, HH:MM), not an exact clock value, since the exact wall-clock
+  // rendering of a UTC instant depends on the machine's local timezone.
+  it('formats each trip row\'s date and times from its raw ISO instants', () => {
+    const fixture = createFixture();
+
+    const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="activity-trip-row"]');
+    const cells = row.querySelectorAll('td');
+    expect(cells[0].textContent).toMatch(/^\d{2}\/\d{2}$/);
+    expect(cells[1].textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(cells[2].textContent).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  // Task 4.4: DailyDistancePoint.day is now a raw ISO calendar date -- this
+  // proves the chart renders a real weekday label derived from it, not the
+  // raw "2026-09-14" string itself.
+  it('renders a weekday abbreviation for each daily-distance chart bar, not the raw ISO date', () => {
+    const fixture = createFixture();
+
+    const bar: HTMLElement = fixture.nativeElement.querySelector('.bar-day');
+    expect(bar.textContent?.trim()).not.toBe('');
+    expect(bar.textContent).not.toContain('2026-09-14');
   });
 
   it('gives the vehicle selector an accessible name', () => {
@@ -75,7 +126,7 @@ describe('ActivityReportPageComponent', () => {
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
-    expect(activityReportService.getReport).toHaveBeenLastCalledWith('VH-0892');
+    expect(activityReportService.getReport).toHaveBeenLastCalledWith('VH-0892', expect.any(String), expect.any(String));
     expect(statValue(fixture, 'stat-distance')).toContain('156.4');
     expect(statValue(fixture, 'stat-moving')).toContain('6h 42');
     expect(statValue(fixture, 'stat-idle')).toContain('2h 48');
@@ -104,6 +155,6 @@ describe('ActivityReportPageComponent', () => {
     button.click();
     fixture.detectChanges();
 
-    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042');
+    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042', expect.any(String), expect.any(String));
   });
 });

@@ -1,7 +1,17 @@
 package dev.fleetpulse.processor.telemetry;
 
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
+import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
+import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
+import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
+import dev.fleetpulse.processor.eta.JdbcRecentSpeedReader;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationEtaWriter;
+import dev.fleetpulse.processor.eta.JdbcVehicleDestinationReader;
+import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
 import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
 import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
 import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
@@ -166,7 +176,10 @@ class TelemetryBatchWriteTest {
 
     private static JdbcTelemetryPositionWriter newWriter() {
         JdbcTemplate jdbcTemplate = newJdbcTemplate();
-        return new JdbcTelemetryPositionWriter(jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate));
+        return new JdbcTelemetryPositionWriter(
+            jdbcTemplate, newMotionStreakTracker(), newGeofenceRuleDispatcher(jdbcTemplate),
+            newEtaRecalculationDispatcher(jdbcTemplate), newAlertRuleDispatcher(jdbcTemplate)
+        );
     }
 
     private static VehicleMotionStreakTracker newMotionStreakTracker() {
@@ -188,6 +201,38 @@ class TelemetryBatchWriteTest {
             alert -> { },
             new JdbcVehicleFenceStateWriter(jdbcTemplate),
             new JdbcGeofenceAlertWriter(jdbcTemplate)
+        );
+    }
+
+    // Task 2.4/WU2: no destinations are ever assigned by this test, so this
+    // dispatcher always finds zero active destinations to recalculate --
+    // mirrors newGeofenceRuleDispatcher's own identical reasoning above.
+    private static EtaRecalculationDispatcher newEtaRecalculationDispatcher(JdbcTemplate jdbcTemplate) {
+        FleetpulseEtaProperties etaProperties = new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15));
+        return new EtaRecalculationDispatcher(
+            new JdbcVehicleDestinationReader(jdbcTemplate),
+            new JdbcRecentSpeedReader(jdbcTemplate),
+            new SinuosityEtaCalculator(etaProperties),
+            new JdbcVehicleDestinationEtaWriter(jdbcTemplate),
+            (organizationId, vehicleId, estimate, calculatedAt) -> { },
+            etaProperties
+        );
+    }
+
+    // Task 3.2/WU3: no sustained speeding/idle condition is ever produced by
+    // this test, so this dispatcher always evaluates false conditions --
+    // wired with the real writer/silence-state store against the same
+    // database, but a no-op AlertPublisher, mirroring
+    // newGeofenceRuleDispatcher's own identical reasoning above
+    // (AlertSilenceEngineTest/AlertRuleEndToEndTest already cover the
+    // alerting behavior itself).
+    private static AlertRuleDispatcher newAlertRuleDispatcher(JdbcTemplate jdbcTemplate) {
+        return new AlertRuleDispatcher(
+            jdbcTemplate,
+            new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)),
+            new JdbcAlertWriter(jdbcTemplate),
+            alert -> { },
+            new JdbcAlertSilenceStateStore(jdbcTemplate)
         );
     }
 

@@ -43,7 +43,9 @@ public class FleetStateService {
 
     private static VehicleStateResponse toResponse(Vehicle vehicle, VehicleStateRow row) {
         if (row == null) {
-            return new VehicleStateResponse(vehicle.getId(), vehicle.getLabel(), null, null, null, null, false);
+            return new VehicleStateResponse(
+                vehicle.getId(), vehicle.getLabel(), null, null, null, null, false, null, null, null, null, null
+            );
         }
         return new VehicleStateResponse(
             vehicle.getId(),
@@ -52,7 +54,12 @@ public class FleetStateService {
             row.lon(),
             row.recordedAt(),
             row.motionState(),
-            row.online()
+            row.online(),
+            row.destinationLat(),
+            row.destinationLon(),
+            row.etaSeconds(),
+            row.etaMarginSeconds(),
+            row.etaCalculatedAt()
         );
     }
 }

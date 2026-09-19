@@ -17,14 +17,34 @@ describe('ActivityReportStore', () => {
     'VH-1042': {
       vehicleId: 'VH-1042',
       summary: { totalDistanceKm: 428.6, movingMinutes: 684, idleMinutes: 112, avgSpeedKmh: 54, maxSpeedKmh: 97 },
-      dailyDistances: [{ day: 'Lun', distanceKm: 52 }],
-      trips: [{ date: '14/09', startTime: '07:02', endTime: '09:18', distanceKm: 61.2, durationMinutes: 136, idleMinutes: 8, maxSpeedKmh: 94 }],
+      dailyDistances: [{ day: '2026-09-14', distanceKm: 52 }],
+      trips: [
+        {
+          id: 't-1042-1',
+          startedAt: '2026-09-14T07:02:00Z',
+          endedAt: '2026-09-14T09:18:00Z',
+          distanceKm: 61.2,
+          durationMinutes: 136,
+          idleMinutes: 8,
+          maxSpeedKmh: 94,
+        },
+      ],
     },
     'VH-0892': {
       vehicleId: 'VH-0892',
       summary: { totalDistanceKm: 156.4, movingMinutes: 402, idleMinutes: 168, avgSpeedKmh: 33, maxSpeedKmh: 71 },
-      dailyDistances: [{ day: 'Lun', distanceKm: 18.2 }],
-      trips: [{ date: '14/09', startTime: '08:10', endTime: '09:40', distanceKm: 14.6, durationMinutes: 90, idleMinutes: 22, maxSpeedKmh: 58 }],
+      dailyDistances: [{ day: '2026-09-14', distanceKm: 18.2 }],
+      trips: [
+        {
+          id: 't-0892-1',
+          startedAt: '2026-09-14T08:10:00Z',
+          endedAt: '2026-09-14T09:40:00Z',
+          distanceKm: 14.6,
+          durationMinutes: 90,
+          idleMinutes: 22,
+          maxSpeedKmh: 58,
+        },
+      ],
     },
   };
 
@@ -55,7 +75,7 @@ describe('ActivityReportStore', () => {
     expect(activityReportService.listVehicles).toHaveBeenCalledTimes(1);
     expect(store.vehicles()).toEqual(vehicles);
     expect(store.selectedVehicleId()).toBe('VH-1042');
-    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042');
+    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042', expect.any(String), expect.any(String));
     expect(store.summary()).toEqual(reportByVehicle['VH-1042'].summary);
   });
 
@@ -67,7 +87,7 @@ describe('ActivityReportStore', () => {
     store.selectVehicle('VH-0892');
 
     expect(store.selectedVehicleId()).toBe('VH-0892');
-    expect(activityReportService.getReport).toHaveBeenLastCalledWith('VH-0892');
+    expect(activityReportService.getReport).toHaveBeenLastCalledWith('VH-0892', expect.any(String), expect.any(String));
     expect(store.summary()).toEqual(reportByVehicle['VH-0892'].summary);
     expect(store.dailyDistances()).toEqual(reportByVehicle['VH-0892'].dailyDistances);
     expect(store.trips()).toEqual(reportByVehicle['VH-0892'].trips);

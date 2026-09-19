@@ -1,7 +1,30 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { Card } from 'primeng/card';
 import { Tag } from 'primeng/tag';
 import type { VehicleView } from '../models/vehicle-view.model';
+
+// Task 2.5 / DoD ("la interfaz nunca presenta el ETA como una hora exacta
+// sin margen"): the ONLY place this library renders an ETA -- always as
+// "~N min (+/- M min)", never a clock time (etaCalculatedAt is the moment
+// this WAS computed, deliberately not surfaced as an arrival time either).
+// Minutes, not seconds, matches this panel's own existing granularity
+// (Speed is km/h, not m/s) and is what a dispatcher actually needs to
+// decide with at a glance. Three states, not two: no destination assigned
+// at all is different from a destination assigned but not yet recalculated
+// by the live path (V11's own "NULL until the first live position"
+// contract) -- collapsing them into one "Unknown" would hide a real,
+// momentary "still calculating" state from the dispatcher.
+export function formatEtaLabel(vehicle: VehicleView | undefined): string {
+  if (!vehicle || vehicle.destinationLat === undefined || vehicle.destinationLon === undefined) {
+    return 'No destination assigned';
+  }
+  if (vehicle.etaSeconds === undefined || vehicle.etaMarginSeconds === undefined) {
+    return 'Calculating…';
+  }
+  const minutes = Math.round(vehicle.etaSeconds / 60);
+  const marginMinutes = Math.round(vehicle.etaMarginSeconds / 60);
+  return `~${minutes} min (± ${marginMinutes} min)`;
+}
 
 // Task 5.3: vehicle detail panel. Requirement "Separación entre posición
 // interpolada y posición reportada" -- this component only ever renders
@@ -20,4 +43,6 @@ import type { VehicleView } from '../models/vehicle-view.model';
 })
 export class VehicleDetailComponent {
   readonly vehicle = input<VehicleView | undefined>(undefined);
+
+  protected readonly etaLabel = computed(() => formatEtaLabel(this.vehicle()));
 }

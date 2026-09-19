@@ -6,6 +6,10 @@
 // layer required, as long as the fields line up.
 export type VehicleMotionState = 'MOVING' | 'IDLING' | 'STOPPED';
 
+// Task 2.5 (06-add-trips-eta-alerts, WU2): etaSeconds/etaMarginSeconds are
+// ALWAYS read together by VehicleDetailComponent -- spec.md's "nunca como
+// hora exacta sin margen" means there is no presentational path that shows
+// one without the other.
 export interface VehicleView {
   readonly vehicleId: string;
   readonly label?: string;
@@ -16,6 +20,11 @@ export interface VehicleView {
   readonly heading?: number;
   readonly motionState?: VehicleMotionState;
   readonly online?: boolean;
+  readonly destinationLat?: number;
+  readonly destinationLon?: number;
+  readonly etaSeconds?: number;
+  readonly etaMarginSeconds?: number;
+  readonly etaCalculatedAt?: string;
 }
 
 export interface FleetFilterValue {

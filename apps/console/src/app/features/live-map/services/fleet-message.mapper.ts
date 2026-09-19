@@ -5,6 +5,11 @@ import type { MqttInboundMessage } from '../../../core/mqtt/mqtt-connection.mode
 // the vehicle segment, same as the backend.
 const TELEMETRY_TOPIC_PATTERN = /^fleet\/[^/]+\/vehicle\/([^/]+)\/telemetry$/;
 const STATUS_TOPIC_PATTERN = /^fleet\/[^/]+\/vehicle\/([^/]+)\/status$/;
+// Task 2.4 (06-add-trips-eta-alerts, WU2): matches EtaMqttConfig/MqttEtaPublisher's
+// own per-vehicle topic (processor module), the same per-vehicle shape as
+// telemetry/status -- not alerts' org-wide topic -- since ETA recalculates
+// per live position for one specific vehicle.
+const ETA_TOPIC_PATTERN = /^fleet\/[^/]+\/vehicle\/([^/]+)\/eta$/;
 
 export interface VehicleTelemetryUpdate {
   readonly kind: 'telemetry';
@@ -22,7 +27,18 @@ export interface VehiclePresenceUpdate {
   readonly online: boolean;
 }
 
-export type VehicleUpdate = VehicleTelemetryUpdate | VehiclePresenceUpdate;
+// Task 2.4/2.5: matches EtaPayload's wire shape (processor module) --
+// vehicleId comes from the topic, never repeated in the body, the same
+// convention VehicleTelemetryUpdate already follows.
+export interface VehicleEtaUpdate {
+  readonly kind: 'eta';
+  readonly vehicleId: string;
+  readonly etaSeconds: number;
+  readonly etaMarginSeconds: number;
+  readonly calculatedAt: string;
+}
+
+export type VehicleUpdate = VehicleTelemetryUpdate | VehiclePresenceUpdate | VehicleEtaUpdate;
 
 // Turns a raw MqttInboundMessage into a validated VehicleUpdate, or discards
 // it (returns undefined) if the topic/payload doesn't match the wire
@@ -39,6 +55,10 @@ export function mapInboundMessage(message: MqttInboundMessage): VehicleUpdate | 
   const statusMatch = STATUS_TOPIC_PATTERN.exec(message.topic);
   if (statusMatch) {
     return mapPresence(statusMatch[1], message.payload);
+  }
+  const etaMatch = ETA_TOPIC_PATTERN.exec(message.topic);
+  if (etaMatch) {
+    return mapEta(etaMatch[1], message.payload);
   }
   return undefined;
 }
@@ -67,6 +87,17 @@ function mapPresence(vehicleId: string, payload: unknown): VehiclePresenceUpdate
     return undefined;
   }
   return { kind: 'presence', vehicleId, online: payload['online'] };
+}
+
+function mapEta(vehicleId: string, payload: unknown): VehicleEtaUpdate | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const { etaSeconds, etaMarginSeconds, calculatedAt } = payload;
+  if (typeof etaSeconds !== 'number' || typeof etaMarginSeconds !== 'number' || typeof calculatedAt !== 'string') {
+    return undefined;
+  }
+  return { kind: 'eta', vehicleId, etaSeconds, etaMarginSeconds, calculatedAt };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
