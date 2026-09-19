@@ -227,7 +227,7 @@ jobs:
           ssh-keyscan -H "${{ secrets.ORACLE_SSH_HOST }}" >> ~/.ssh/known_hosts
 
           rsync -az --relative -e "ssh -i ~/.ssh/oracle_deploy_key" \
-            docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf docker/mosquitto/bootstrap-and-run.sh \
+            docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf docker/mosquitto/bootstrap-and-run.sh docker/caddy/Caddyfile \
             "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}:/opt/fleetpulse/"
 
           ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \

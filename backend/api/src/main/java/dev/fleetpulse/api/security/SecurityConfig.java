@@ -1,6 +1,8 @@
 package dev.fleetpulse.api.security;
 
+import dev.fleetpulse.api.config.FleetpulseCorsProperties;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +13,11 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 // Task 2.1/2.2/2.4: form-based dispatcher session auth. Entry point and login
 // handlers are overridden to return plain status codes instead of Spring
@@ -19,6 +26,7 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@EnableConfigurationProperties(FleetpulseCorsProperties.class)
 public class SecurityConfig {
 
     // Task 2.1: Argon2 preferred over BCrypt (tasks.md). Spring Security's
@@ -29,11 +37,33 @@ public class SecurityConfig {
         return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
     }
 
+    // Previously missing entirely: with no CorsConfigurationSource bean,
+    // Spring Security adds no CORS response headers at all, so a real
+    // browser silently blocks the console (a different origin in every
+    // environment this project deploys to) from reading any api response,
+    // credentialed or not -- this was never exercised before a real browser
+    // actually tried to log in. `allowCredentials(true)` requires listing
+    // explicit origin patterns, never "*" (Spring rejects that combination
+    // outright), hence FleetpulseCorsProperties instead of a wildcard.
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource(FleetpulseCorsProperties properties) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(properties.allowedOriginPatterns());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
+        configuration.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
     @Bean
     public SecurityFilterChain dispatcherSecurityFilterChain(
             HttpSecurity http,
-            DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter) throws Exception {
+            DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter,
+            CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/login").permitAll()
