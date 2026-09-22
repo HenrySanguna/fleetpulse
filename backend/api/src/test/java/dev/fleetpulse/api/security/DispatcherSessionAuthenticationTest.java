@@ -32,7 +32,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Tasks 2.1 (form login + Argon2 hash in practice), 2.2 (HttpOnly/Secure/
-// SameSite=Strict session cookie), and 2.3 (per-request orgId resolution via
+// SameSite session cookie -- None, not Strict, see application.yml's own
+// deviation note), and 2.3 (per-request orgId resolution via
 // GET /api/dispatchers/me).
 @Testcontainers
 @AutoConfigureTestRestTemplate
@@ -81,7 +82,7 @@ class DispatcherSessionAuthenticationTest {
     private PasswordEncoder passwordEncoder;
 
     @Test
-    void logsInWithValidCredentialsAndReceivesAStrictSessionCookie() {
+    void logsInWithValidCredentialsAndReceivesASecureSessionCookie() {
         seedDispatcher("acme-login", "ana@acme.test", "s3cret-pass", UserRole.DISPATCHER);
 
         ResponseEntity<String> response = DispatcherLoginTestSupport
@@ -101,7 +102,11 @@ class DispatcherSessionAuthenticationTest {
             .orElseThrow(() -> new AssertionError("no SESSION cookie in " + cookies));
         assertThat(setCookie).contains("HttpOnly");
         assertThat(setCookie).contains("Secure");
-        assertThat(setCookie).containsIgnoringCase("SameSite=Strict");
+        // SameSite=None, not Strict: deviation documented in application.yml
+        // -- the console (Cloudflare Pages) and api are different sites
+        // under this deployment topology, and Strict makes the browser
+        // withhold the cookie on every request the console itself makes.
+        assertThat(setCookie).containsIgnoringCase("SameSite=None");
     }
 
     @Test
