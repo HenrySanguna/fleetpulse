@@ -230,8 +230,17 @@ jobs:
             docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf docker/mosquitto/bootstrap-and-run.sh docker/caddy/Caddyfile \
             "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}:/opt/fleetpulse/"
 
+          # caddy/mosquitto's config is bind-mounted, not baked into their
+          # (unchanged-tag) images, so plain `up -d` never notices it
+          # changed and leaves them running stale config -- found live
+          # (wss:// handshake 404 after the 07-expose-live-map-ws deploy).
+          # --force-recreate them explicitly, BEFORE the second `up -d`
+          # recreates api/processor (their image tag changes every deploy):
+          # api/processor's MQTT client has automaticReconnect disabled, so
+          # mosquitto must already be on the new config by the time they
+          # reconnect, not after.
           ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \
-            "cd /opt/fleetpulse && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml pull && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d"
+            "cd /opt/fleetpulse && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml pull && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d --force-recreate caddy mosquitto && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d"
 
   # Task 6.6: "SHA correcto y latido de processor reciente" (design.md,
   # "Salud"). Same two JSON-path assertions as before, now pointed at the
