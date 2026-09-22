@@ -1,3 +1,8 @@
 {$FLEETPULSE_PUBLIC_HOSTNAME} {
+	# Live map's browser MQTT client (04-add-live-map, archived): mosquitto's
+	# own websockets listener (docker/mosquitto/mosquitto.prod.conf) doesn't
+	# route on path, so any path under /mqtt-ws works. Caddy upgrades the
+	# connection to WS automatically -- no extra directive needed.
+	reverse_proxy /mqtt-ws* mosquitto:9001
 	reverse_proxy api:8080
 }

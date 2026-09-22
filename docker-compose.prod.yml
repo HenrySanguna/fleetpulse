@@ -91,10 +91,13 @@ services:
       FLEETPULSE_MQTT_DYNSEC_ADMINPASSWORD: ${MOSQUITTO_DYNSEC_ADMIN_PASSWORD}
       FLEETPULSE_MQTT_SERVICE_USERNAME: ${MOSQUITTO_DYNSEC_SERVICE_USERNAME}
       FLEETPULSE_MQTT_SERVICE_PASSWORD: ${MOSQUITTO_DYNSEC_SERVICE_PASSWORD}
-      # Inert until mosquitto publishes a WebSocket port on this VM (04-add-live-map's
-      # concern, see the "no public/WS broker access" note above): GET
-      # /api/mqtt/credentials still returns this value today, no client can use it yet.
-      FLEETPULSE_MQTT_BROWSER_WSURL: ${FLEETPULSE_MQTT_BROWSER_WSURL:-ws://mosquitto:9001}
+      # Public wss:// through caddy's /mqtt-ws route (docker/caddy/Caddyfile),
+      # not the internal ws://mosquitto:9001 -- the browser can't resolve
+      # "mosquitto" and blocks plain ws:// from this HTTPS console as mixed
+      # content anyway (found live via Playwright: "Connecting..." never
+      # resolved, 0 vehicles visible despite 04-add-live-map being fully
+      # implemented and archived).
+      FLEETPULSE_MQTT_BROWSER_WSURL: ${FLEETPULSE_MQTT_BROWSER_WSURL:-wss://${FLEETPULSE_PUBLIC_HOSTNAME}/mqtt-ws}
       FLEETPULSE_MQTT_BROWSER_CREDENTIALTTL: PT5M
     # No published port: caddy is the only public entry point now (see its
     # own comment above). Reachable within the compose network as api:8080.
