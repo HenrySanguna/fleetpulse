@@ -26,13 +26,26 @@ server:
   servlet:
     session:
       cookie:
-        # 02-add-fleet-auth, task 2.2: design.md requires the dispatcher
-        # session cookie to be HttpOnly/Secure/SameSite=Strict. Spring Boot's
-        # session autoconfiguration feeds these into Spring Session's cookie
-        # serializer, not just the raw servlet container's own cookie.
+        # 02-add-fleet-auth, task 2.2: design.md originally required
+        # HttpOnly/Secure/SameSite=Strict. Deviation, documented per this
+        # project's "note deviations, don't silently freelance" convention:
+        # the console (Cloudflare Pages) and api (its own host) are, and
+        # always will be under this deployment topology, different sites --
+        # SameSite=Strict makes the browser withhold the session cookie on
+        # every request the console's own JS makes to api, which is not a
+        # narrower version of the original requirement, it is login not
+        # working at all, found live via Playwright (curl never triggers
+        # SameSite enforcement, so this stayed invisible through every
+        # earlier manual check). SameSite=None is the standard fix for a
+        # legitimate cross-site SPA+API split and still requires Secure
+        # (already true, TLS via caddy) -- the CSRF exposure that
+        # SameSite=Strict would otherwise additionally guard against is
+        # already independently covered by csrf().spa()'s XSRF-TOKEN
+        # double-submit header (SecurityConfig), so this is not an
+        # unmitigated relaxation.
         http-only: true
         secure: true
-        same-site: strict
+        same-site: none
 
 management:
   endpoints:
