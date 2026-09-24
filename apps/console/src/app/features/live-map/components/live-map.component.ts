@@ -205,12 +205,20 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       if (!outcome.settled) {
         return;
       }
-      this.initialCenterApplied.set(true);
       if (outcome.point) {
+        this.initialCenterApplied.set(true);
         map.easeTo({ center: [outcome.point.lon, outcome.point.lat], zoom: USER_LOCATION_ZOOM });
         return;
       }
-      this.centerOnFleetOrDefault(map);
+      // Settled with no point (denied/unavailable/timed out): only mark the
+      // initial centering as applied once there was actually something to
+      // fit to. With no known vehicles yet, leave it unmarked so this effect
+      // keeps re-running (it reads fleetStore.vehicles() inside
+      // centerOnFleetOrDefault) until a fleet position arrives, instead of
+      // being stuck at the world-default view forever.
+      if (this.centerOnFleetOrDefault(map)) {
+        this.initialCenterApplied.set(true);
+      }
     });
   }
 
@@ -278,14 +286,15 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   // Geolocation fallback when denied/unavailable/timed out: prefer fitting
   // the fleet's currently known vehicle positions over the bare DEFAULT_
   // CENTER/DEFAULT_ZOOM the map was already created with -- if none are
-  // known yet, that default view is simply left as-is (nothing to do here).
-  private centerOnFleetOrDefault(map: MapLibreMap): void {
+  // known yet, that default view is simply left as-is and `false` tells the
+  // caller not to treat the initial centering as resolved yet.
+  private centerOnFleetOrDefault(map: MapLibreMap): boolean {
     const known = [...this.fleetStore.vehicles().values()].filter(
       (vehicle): vehicle is VehicleState & { lat: number; lon: number } =>
         typeof vehicle.lat === 'number' && typeof vehicle.lon === 'number',
     );
     if (known.length === 0) {
-      return;
+      return false;
     }
     const lats = known.map((vehicle) => vehicle.lat);
     const lons = known.map((vehicle) => vehicle.lon);
@@ -296,6 +305,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       ],
       { padding: 64, maxZoom: 14 },
     );
+    return true;
   }
 
   // Task 4.4: the rAF loop itself -- the one piece that genuinely has to

@@ -388,6 +388,57 @@ describe('LiveMapComponent', () => {
       expect(map.fitBoundsCalls.length).toBe(0);
     });
 
+    // Bugfix (2026-09-25 prod QA): the world-default view used to stick
+    // forever once geolocation settled with no point and no vehicles were
+    // known yet, because `initialCenterApplied` was marked true right away.
+    // It must now keep waiting and fit the fleet bounds once a position
+    // eventually arrives.
+    it('fits the fleet bounds once when vehicle positions arrive after a denied/unavailable geolocation', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve(undefined);
+      flushCenteringEffect();
+      expect(map.fitBoundsCalls.length).toBe(0);
+
+      store.applySnapshot({
+        vehicles: [{ vehicleId: 'v1', lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' }],
+      });
+      TestBed.tick();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+      expect(map.fitBoundsCalls[0]?.[0]).toEqual([
+        [20, 10],
+        [20, 10],
+      ]);
+
+      store.applySnapshot({
+        vehicles: [
+          { vehicleId: 'v1', lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
+          { vehicleId: 'v2', lat: 30, lon: 40, recordedAt: '2026-01-01T00:00:00Z' },
+        ],
+      });
+      TestBed.tick();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+    });
+
+    it('does not fit the fleet bounds if the user drags before any vehicle position arrives', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve(undefined);
+      flushCenteringEffect();
+
+      map.fire('dragstart', { originalEvent: {} });
+      flushCenteringEffect();
+
+      store.applySnapshot({
+        vehicles: [{ vehicleId: 'v1', lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' }],
+      });
+      TestBed.tick();
+
+      expect(map.fitBoundsCalls.length).toBe(0);
+    });
+
     it('does not center on the resolved position once the user has dragged the map', async () => {
       const { map } = await createAndLoad();
 
