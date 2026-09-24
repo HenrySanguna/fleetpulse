@@ -15,20 +15,22 @@
       <dt>Reported position</dt>
       <dd class="mono" data-testid="vehicle-detail-position">
         @if (v.lat !== undefined && v.lon !== undefined) {
-          {{ v.lat }}, {{ v.lon }}
+          {{ v.lat | number: '1.5-5' }}, {{ v.lon | number: '1.5-5' }}
         } @else {
           Unknown
         }
       </dd>
 
       <dt>Speed</dt>
-      <dd>{{ v.speedKmh !== undefined ? v.speedKmh + ' km/h' : 'Unknown' }}</dd>
+      <dd>{{ v.speedKmh !== undefined ? (v.speedKmh | number: '1.0-0') + ' km/h' : 'Unknown' }}</dd>
 
       <dt>Heading</dt>
-      <dd>{{ v.heading !== undefined ? v.heading + '°' : 'Unknown' }}</dd>
+      <dd>{{ v.heading !== undefined ? (v.heading | number: '1.0-0') + '°' : 'Unknown' }}</dd>
 
       <dt>Last reported at</dt>
-      <dd class="mono" data-testid="vehicle-detail-recorded-at">{{ v.recordedAt ?? 'Unknown' }}</dd>
+      <dd class="mono" data-testid="vehicle-detail-recorded-at">
+        {{ v.recordedAt ? (v.recordedAt | date: 'dd/MM/yyyy HH:mm:ss') : 'Unknown' }}
+      </dd>
 
       <dt>ETA</dt>
       <dd data-testid="vehicle-detail-eta">{{ etaLabel() }}</dd>

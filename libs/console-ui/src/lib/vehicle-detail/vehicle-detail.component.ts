@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { Card } from 'primeng/card';
 import { Tag } from 'primeng/tag';
 import type { VehicleView } from '../models/vehicle-view.model';
@@ -23,7 +24,12 @@ export function formatEtaLabel(vehicle: VehicleView | undefined): string {
   }
   const minutes = Math.round(vehicle.etaSeconds / 60);
   const marginMinutes = Math.round(vehicle.etaMarginSeconds / 60);
-  return `~${minutes} min (± ${marginMinutes} min)`;
+  // Prod QA fix: rounding to exactly 0 read as "~0 min", implying the
+  // vehicle had already arrived -- "< 1 min" is honest about the estimate
+  // still being a duration, just below this label's own minute granularity.
+  const etaLabel = minutes === 0 ? '< 1 min' : `~${minutes} min`;
+  const marginLabel = marginMinutes === 0 ? '< 1 min' : `${marginMinutes} min`;
+  return `${etaLabel} (± ${marginLabel})`;
 }
 
 // Task 5.3: vehicle detail panel. Requirement "Separación entre posición
@@ -36,7 +42,7 @@ export function formatEtaLabel(vehicle: VehicleView | undefined): string {
 // WU4's own test already proved.
 @Component({
   selector: 'console-ui-vehicle-detail',
-  imports: [Card, Tag],
+  imports: [Card, Tag, DecimalPipe, DatePipe],
   templateUrl: './vehicle-detail.component.html',
   styleUrl: './vehicle-detail.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
