@@ -61,9 +61,17 @@ services:
       MOSQUITTO_DYNSEC_ADMIN_PASSWORD: ${MOSQUITTO_DYNSEC_ADMIN_PASSWORD}
       MOSQUITTO_DYNSEC_SERVICE_USERNAME: ${MOSQUITTO_DYNSEC_SERVICE_USERNAME}
       MOSQUITTO_DYNSEC_SERVICE_PASSWORD: ${MOSQUITTO_DYNSEC_SERVICE_PASSWORD}
+      # Prod demo service, task 5.4 -- read by provision-demo-simulator.sh
+      # when the CI deploy step runs it via `docker compose exec`, which
+      # inherits this container's own environment (not the deploy shell's).
+      # No default: the deploy step only runs provisioning at all when this
+      # secret is present (see .github/workflows/ci.yml deploy-oracle).
+      MOSQUITTO_DEMO_SIMULATOR_PASSWORD: ${MOSQUITTO_DEMO_SIMULATOR_PASSWORD:-}
+      SIMULATOR_ORG_ID: ${SIMULATOR_ORG_ID:-e7de66a7-f8a2-4992-9a57-8d909634609f}
     volumes:
       - ./docker/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
       - ./docker/mosquitto/bootstrap-and-run.sh:/mosquitto/bootstrap-and-run.sh:ro
+      - ./docker/mosquitto/provision-demo-simulator.sh:/mosquitto/provision-demo-simulator.sh:ro
     command: ["sh", "/mosquitto/bootstrap-and-run.sh"]
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -u \"$$MOSQUITTO_DYNSEC_SERVICE_USERNAME\" -P \"$$MOSQUITTO_DYNSEC_SERVICE_PASSWORD\" -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
