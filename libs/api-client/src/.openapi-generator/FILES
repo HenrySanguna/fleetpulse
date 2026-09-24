@@ -8,6 +8,8 @@ api/activityReportController.serviceInterface.ts
 api/alertsController.service.ts
 api/alertsController.serviceInterface.ts
 api/api.ts
+api/csrfTokenController.service.ts
+api/csrfTokenController.serviceInterface.ts
 api/deviceCredentialController.service.ts
 api/deviceCredentialController.serviceInterface.ts
 api/dispatcherSessionController.service.ts
@@ -30,6 +32,7 @@ model/activityReportResponse.ts
 model/activityReportSummaryResponse.ts
 model/activityTripResponse.ts
 model/alertResponse.ts
+model/csrfTokenResponse.ts
 model/dailyDistancePointResponse.ts
 model/deviceCredentialResponse.ts
 model/dispatcherSelfView.ts

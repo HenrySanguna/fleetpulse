@@ -161,7 +161,7 @@ class VehicleDestinationEndpointTest {
 
     private HttpHeaders mutationHeaders(String email) {
         HttpHeaders headers = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), email, "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), email, "s3cret-pass"));
         headers.setContentType(MediaType.APPLICATION_JSON);
         return headers;
     }

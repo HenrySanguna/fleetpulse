@@ -116,7 +116,7 @@ class DeviceRevocationForcedDisconnectTest {
         Device device = DeviceCredentialTestSupport.createDeviceFixture(vehicles, devices, org, "Truck Revoke", "device-revoke");
 
         HttpHeaders adminSession = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-revoke@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-revoke@acme.test", "s3cret-pass"));
         DeviceCredentialResponse credentials = DeviceCredentialTestSupport.provision(restTemplate, baseUrl(), adminSession, device.getId());
 
         // GIVEN: a device with an actually-open MQTT connection, publishing telemetry.

@@ -3,6 +3,7 @@ package dev.fleetpulse.api.security;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
@@ -37,34 +38,42 @@ public final class DispatcherLoginTestSupport {
         return restTemplate.postForEntity(baseUrl + "/login", new HttpEntity<>(form, headers), String.class);
     }
 
-    // Task 4.1/4.2/4.3 discovery: since SecurityConfig's csrf().spa() started
-    // also setting an XSRF-TOKEN cookie on the /login response (needed for
-    // mutationHeadersFrom below), this can no longer assume the FIRST
-    // Set-Cookie header is the session cookie -- Set-Cookie ordering across
-    // two cookies set by different filters in the chain is not guaranteed.
-    // Combining every cookie into one Cookie header side-steps that
-    // ordering entirely and is harmless for GET requests (an extra
-    // XSRF-TOKEN cookie is simply ignored by Spring Security's CSRF filter
-    // for safe methods).
+    // Task 4.1/4.2/4.3 discovery: does not assume the FIRST Set-Cookie
+    // header is the session cookie -- Set-Cookie ordering across cookies
+    // set by different filters in the chain is not guaranteed (previously
+    // mattered when SecurityConfig's csrf().spa() also set an XSRF-TOKEN
+    // cookie here; cross-site-csrf-token replaced that with
+    // HttpSessionCsrfTokenRepository, which sets none, but combining every
+    // cookie into one Cookie header stays the robust default rather than
+    // assuming exactly one is ever present).
     public static HttpHeaders sessionHeadersFrom(ResponseEntity<?> loginResponse) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.COOKIE, combinedCookieHeader(setCookiesOf(loginResponse)));
         return headers;
     }
 
-    // Tasks 4.1/4.2/4.3 (02-add-fleet-auth, WU4): every state-changing
-    // endpoint keeps Spring Security's default CSRF protection --
-    // SecurityConfig's csrf().spa() exempts only /login -- so a POST/DELETE
-    // call needs BOTH the session cookie and the XSRF-TOKEN cookie echoed
-    // back as the X-XSRF-TOKEN header. The /login response already carries
-    // an XSRF-TOKEN Set-Cookie (CsrfFilter runs, and therefore writes the
-    // cookie, on every request/response regardless of that path's own CSRF
-    // exemption), so no extra bootstrap request is needed before this.
-    public static HttpHeaders mutationHeadersFrom(ResponseEntity<?> loginResponse) {
-        List<String> cookies = setCookiesOf(loginResponse);
+    // Tasks 4.1/4.2/4.3 (02-add-fleet-auth, WU4); updated by
+    // cross-site-csrf-token: every state-changing endpoint keeps Spring
+    // Security's default CSRF protection -- SecurityConfig's csrf(...)
+    // exempts only /login -- so a POST/DELETE call needs both the session
+    // cookie and a valid CSRF header. SecurityConfig backs CSRF with
+    // HttpSessionCsrfTokenRepository (no client-readable cookie), so the
+    // token can only be read from CsrfTokenController's response body, not
+    // off the login response's Set-Cookie headers -- this mirrors what a
+    // real client must do: call GET /api/csrf, authenticated by the same
+    // session cookie, and echo its token value (and its dynamic header
+    // name) back verbatim.
+    public static HttpHeaders mutationHeadersFrom(TestRestTemplate restTemplate, String baseUrl, ResponseEntity<?> loginResponse) {
+        HttpHeaders sessionHeaders = sessionHeadersFrom(loginResponse);
+        ResponseEntity<CsrfTokenResponse> csrfResponse = restTemplate.exchange(
+            baseUrl + "/api/csrf", HttpMethod.GET, new HttpEntity<>(sessionHeaders), CsrfTokenResponse.class);
+        CsrfTokenResponse csrf = csrfResponse.getBody();
+        if (csrf == null) {
+            throw new AssertionError("GET /api/csrf returned no body for an authenticated session (status " + csrfResponse.getStatusCode() + ")");
+        }
         HttpHeaders headers = new HttpHeaders();
-        headers.add(HttpHeaders.COOKIE, combinedCookieHeader(cookies));
-        headers.add("X-XSRF-TOKEN", csrfTokenFrom(cookies));
+        headers.addAll(sessionHeaders);
+        headers.add(csrf.headerName(), csrf.token());
         return headers;
     }
 
@@ -101,19 +110,5 @@ public final class DispatcherLoginTestSupport {
             latestByName.put(name, pair);
         }
         return String.join("; ", latestByName.values());
-    }
-
-    private static String csrfTokenFrom(List<String> setCookieHeaders) {
-        String token = null;
-        for (String setCookie : setCookieHeaders) {
-            String cookiePair = setCookie.split(";", 2)[0];
-            if (cookiePair.startsWith("XSRF-TOKEN=")) {
-                token = cookiePair.substring("XSRF-TOKEN=".length());
-            }
-        }
-        if (token == null) {
-            throw new AssertionError("the login response must set an XSRF-TOKEN cookie");
-        }
-        return token;
     }
 }

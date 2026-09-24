@@ -103,7 +103,7 @@ class DeviceAlertsSubscriptionRejectionTest {
         Device device = DeviceCredentialTestSupport.createDeviceFixture(vehicles, devices, org, "Truck Alerts", "device-alerts");
 
         HttpHeaders adminSession = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-alerts@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-alerts@acme.test", "s3cret-pass"));
         DeviceCredentialResponse credentials = DeviceCredentialTestSupport.provision(restTemplate, baseUrl(), adminSession, device.getId());
 
         MqttClient client = new MqttClient(brokerUrl(), "fleetpulse-alerts-test-" + UUID.randomUUID(), new MemoryPersistence());

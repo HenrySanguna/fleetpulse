@@ -108,7 +108,7 @@ class DeviceCredentialRotationTest {
         Device device = DeviceCredentialTestSupport.createDeviceFixture(vehicles, devices, org, "Truck Rotate", "device-rotate");
 
         HttpHeaders adminSession = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-rotate@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-rotate@acme.test", "s3cret-pass"));
         DeviceCredentialResponse oldCredentials = DeviceCredentialTestSupport.provision(restTemplate, baseUrl(), adminSession, device.getId());
 
         // WHEN: an admin rotates the device's credential.

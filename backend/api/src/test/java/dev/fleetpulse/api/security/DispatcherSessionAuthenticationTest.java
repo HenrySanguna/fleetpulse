@@ -91,11 +91,12 @@ class DispatcherSessionAuthenticationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<String> cookies = response.getHeaders().get(HttpHeaders.SET_COOKIE);
         assertThat(cookies).isNotNull().isNotEmpty();
-        // 02-add-fleet-auth, WU4: the login response now also carries an
-        // XSRF-TOKEN Set-Cookie (SecurityConfig's csrf().spa(), needed by
-        // mutation endpoints), so the session cookie can no longer be
-        // assumed to be the first Set-Cookie header -- find it by its own
-        // "SESSION=" prefix (Spring Session's default cookie name) instead.
+        // Found by its own "SESSION=" prefix (Spring Session's default
+        // cookie name), not assumed to be the only/first Set-Cookie header --
+        // SecurityConfig's csrf().spa() no longer adds an XSRF-TOKEN cookie
+        // (cross-site-csrf-token: CSRF is now HttpSessionCsrfTokenRepository-
+        // backed, delivered via GET /api/csrf instead), but this stays
+        // defensive rather than assuming exactly one cookie is ever set.
         String setCookie = cookies.stream()
             .filter(cookie -> cookie.startsWith("SESSION="))
             .findFirst()
