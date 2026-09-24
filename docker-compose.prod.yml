@@ -161,6 +161,35 @@ services:
     networks:
       - fleetpulse
 
+  # Prod demo service, task 5.5: runs the same backend image as api/processor
+  # with FLEETPULSE_PROCESS=simulator (entrypoint.sh), publishing telemetry
+  # for exactly the 10 vehicle IDs docker/demo/seed-demo-fleet.sql seeds --
+  # keep both lists in sync. Authenticates as the demo-simulator dynsec
+  # identity provision-demo-simulator.sh provisions (publish-only), never
+  # the broad internal-services identity api/processor use.
+  simulator:
+    image: ghcr.io/henrysanguna/fleetpulse-backend:${IMAGE_TAG:-latest}
+    profiles: ["demo"]
+    environment:
+      FLEETPULSE_PROCESS: simulator
+      SIMULATOR_ORG_ID: ${SIMULATOR_ORG_ID:-e7de66a7-f8a2-4992-9a57-8d909634609f}
+      SIMULATOR_VEHICLE_IDS: >-
+        8f1cbe99-3d34-49bb-962e-981d28ba4dce,38cf7b2b-c5eb-4a12-bba7-eaa0179ca053,
+        7c8767ea-d90e-4b91-8556-ad3f984f86db,7d19f0bc-e91f-4aa6-bfe0-7376f06bc832,
+        802154c2-d7e1-46ee-b963-d800addfe6e8,ecd880ad-19bf-4f8a-b291-234668b5f4a2,
+        fa9eb9c2-7479-4049-b324-3caf50ed610d,e4399522-ff08-47e5-bb73-51e0e5d7dfa8,
+        4cbe7816-18c3-44b2-ba74-c20078bbab11,62a73e93-72f7-4e47-b10f-6a658ae88a16
+      SIMULATOR_BROKER_URL: tcp://mosquitto:1883
+      SIMULATOR_MQTT_USERNAME: demo-simulator
+      SIMULATOR_MQTT_PASSWORD: ${MOSQUITTO_DEMO_SIMULATOR_PASSWORD}
+      SIMULATOR_TELEMETRY_INTERVAL_MS: "2000"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fleetpulse
+
 networks:
   fleetpulse:
     driver: bridge

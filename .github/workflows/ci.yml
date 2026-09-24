@@ -227,7 +227,7 @@ jobs:
           ssh-keyscan -H "${{ secrets.ORACLE_SSH_HOST }}" >> ~/.ssh/known_hosts
 
           rsync -az --relative -e "ssh -i ~/.ssh/oracle_deploy_key" \
-            docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf docker/mosquitto/bootstrap-and-run.sh docker/caddy/Caddyfile \
+            docker-compose.prod.yml docker/mosquitto/mosquitto.prod.conf docker/mosquitto/bootstrap-and-run.sh docker/mosquitto/provision-demo-simulator.sh docker/caddy/Caddyfile docker/demo/seed-demo-fleet.sql docker/demo/run-seed.sh \
             "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}:/opt/fleetpulse/"
 
           # caddy/mosquitto's config is bind-mounted, not baked into their
@@ -241,6 +241,28 @@ jobs:
           # reconnect, not after.
           ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \
             "cd /opt/fleetpulse && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml pull && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d --force-recreate caddy mosquitto && IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml up -d"
+
+      # Prod demo service (odd/tasks/prod-demo-simulator.md, task 5.5): opt-in
+      # by design -- entirely skipped unless the MOSQUITTO_DEMO_SIMULATOR_PASSWORD
+      # repo secret exists, so merging this workflow never starts the demo
+      # fleet on its own (same gating pattern as vars.ORACLE_DEPLOY_ENABLED
+      # above). Seed and dynsec provisioning are both idempotent (ON
+      # CONFLICT DO NOTHING / tolerate "already exists"), so this step is
+      # safe to run on every deploy once the secret is set, not just once.
+      # The secret value is interpolated into a single-quoted shell argument
+      # twice (this runner's shell, then the remote one over ssh) -- keep it
+      # alphanumeric, no single quotes, when setting the repo secret.
+      - name: Seed and start the demo simulator (opt-in)
+        if: ${{ secrets.MOSQUITTO_DEMO_SIMULATOR_PASSWORD != '' }}
+        env:
+          MOSQUITTO_DEMO_SIMULATOR_PASSWORD: ${{ secrets.MOSQUITTO_DEMO_SIMULATOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \
+            "cd /opt/fleetpulse && \
+             docker compose -f docker-compose.prod.yml --profile demo run --rm demo-seed && \
+             docker compose -f docker-compose.prod.yml exec -T -e MOSQUITTO_DEMO_SIMULATOR_PASSWORD='$MOSQUITTO_DEMO_SIMULATOR_PASSWORD' mosquitto sh /mosquitto/provision-demo-simulator.sh && \
+             MOSQUITTO_DEMO_SIMULATOR_PASSWORD='$MOSQUITTO_DEMO_SIMULATOR_PASSWORD' IMAGE_TAG=${{ github.sha }} docker compose -f docker-compose.prod.yml --profile demo up -d simulator"
 
   # Task 6.6: "SHA correcto y latido de processor reciente" (design.md,
   # "Salud"). Same two JSON-path assertions as before, now pointed at the
