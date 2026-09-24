@@ -93,6 +93,22 @@ describe('GeofenceEditorPageComponent', () => {
     expect(saveButtonDisabled(fixture)).toBe(false);
   });
 
+  // Regression: canSave used to read the form's plain (non-signal) `.valid`
+  // getter inside computed(), so it only re-evaluated when `draft()` changed
+  // -- drawing the shape before typing the name left Save stuck disabled
+  // even after a valid name was entered, because no signal read observed
+  // the form becoming valid.
+  it('keeps Save disabled for a new geofence until a name is entered AND a shape is drawn, when the shape is drawn first', () => {
+    const fixture = createFixture();
+    expect(saveButtonDisabled(fixture)).toBe(true);
+
+    emitDraft(fixture, { shape: 'POLYGON', vertices: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }, { lat: 3, lon: 1 }] });
+    expect(saveButtonDisabled(fixture)).toBe(true);
+
+    setNameInput(fixture, 'Depot');
+    expect(saveButtonDisabled(fixture)).toBe(false);
+  });
+
   it('save() for a new polygon draft calls GeofenceService.create with the drawn geometry and resets the form', () => {
     geofenceService.create.mockReturnValue(of({ id: 'g1', name: 'Depot' }));
     const fixture = createFixture();
@@ -143,6 +159,23 @@ describe('GeofenceEditorPageComponent', () => {
     const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
     expect(nameInput.value).toBe('Depot');
     expect(fixture.nativeElement.querySelector('[data-testid="geofence-dwell-input"]')).not.toBeNull();
+    expect(saveButtonDisabled(fixture)).toBe(false);
+  });
+
+  // Regression, editing mode: canSave must re-evaluate on every form status
+  // change while editing too, not just when `draft()` changes (no draft is
+  // ever emitted while editing -- see buildUpdateRequest).
+  it('re-evaluates Save while editing when the name is cleared and re-entered', () => {
+    const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_ENTER', vertices: [] };
+    store.setGeofences([existing]);
+    const fixture = createFixture();
+    click(fixture, 'select-geofence-g1');
+    expect(saveButtonDisabled(fixture)).toBe(false);
+
+    setNameInput(fixture, '');
+    expect(saveButtonDisabled(fixture)).toBe(true);
+
+    setNameInput(fixture, 'Depot renamed');
     expect(saveButtonDisabled(fixture)).toBe(false);
   });
 

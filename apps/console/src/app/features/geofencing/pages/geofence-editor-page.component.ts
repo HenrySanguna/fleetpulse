@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
 import { Button } from 'primeng/button';
 import { InputNumber } from 'primeng/inputnumber';
@@ -81,13 +82,20 @@ export class GeofenceEditorPageComponent implements OnInit {
   );
 
   protected readonly isEditing = computed(() => this.selected() !== undefined);
+  // `this.form.valid` is a plain (non-signal) getter, so reading it directly
+  // inside `computed()` would never mark the computed dirty when only the
+  // form's validity changes (e.g. a shape drawn before the name is typed) --
+  // `toSignal` over `statusChanges` makes validity itself a real, trackable
+  // signal so `canSave` stays correctly reactive under zoneless change detection.
+  private readonly formStatus = toSignal(this.form.statusChanges, { initialValue: this.form.status });
+  private readonly formValid = computed(() => this.formStatus() === 'VALID');
   // A new geofence needs a drawn shape; an edit only ever resends the
   // selected geofence's own existing vertices (see buildUpdateRequest).
   protected readonly canSave = computed(() => {
     if (this.saving()) {
       return false;
     }
-    return this.isEditing() ? this.form.valid : this.draft() !== undefined && this.form.valid;
+    return this.isEditing() ? this.formValid() : this.draft() !== undefined && this.formValid();
   });
 
   ngOnInit(): void {
