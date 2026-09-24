@@ -132,6 +132,27 @@ services:
     networks:
       - fleetpulse
 
+  # Prod demo service (odd/tasks/prod-demo-simulator.md, task 5.3): one-shot
+  # idempotent seed of docker/demo/seed-demo-fleet.sql, against the exact
+  # same database api/processor use (SPRING_DATASOURCE_*). `profile: demo`
+  # keeps it out of ordinary `up -d` runs; `restart: "no"` because a seed
+  # run either succeeds once or needs a human to look at why it did not --
+  # retrying it forever would just mask a real failure.
+  demo-seed:
+    image: postgres:17-alpine
+    profiles: ["demo"]
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+    volumes:
+      - ./docker/demo/seed-demo-fleet.sql:/seed/seed-demo-fleet.sql:ro
+      - ./docker/demo/run-seed.sh:/seed/run-seed.sh:ro
+    entrypoint: ["sh", "/seed/run-seed.sh"]
+    restart: "no"
+    networks:
+      - fleetpulse
+
 networks:
   fleetpulse:
     driver: bridge
