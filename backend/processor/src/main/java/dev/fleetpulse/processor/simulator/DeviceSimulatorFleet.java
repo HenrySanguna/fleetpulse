@@ -27,13 +27,22 @@ public final class DeviceSimulatorFleet implements AutoCloseable {
 
     private final List<SimulatedVehicle> vehicles;
     private final Duration telemetryInterval;
-    private final TelemetrySampleGenerator generator = new TelemetrySampleGenerator();
+    private final TelemetrySampleGenerator generator;
     private final Random random = new Random();
     private ScheduledExecutorService scheduler;
 
     DeviceSimulatorFleet(List<SimulatedVehicle> vehicles, Duration telemetryInterval) {
+        this(vehicles, telemetryInterval, new TelemetrySampleGenerator());
+    }
+
+    // Task 5.9: the generator must move vehicles using the SAME tick
+    // interval the fleet actually ticks at (distance = speedKmh * interval),
+    // and confine them to the settings' configured SimulationBounds --
+    // connect() is the one place both are known together.
+    DeviceSimulatorFleet(List<SimulatedVehicle> vehicles, Duration telemetryInterval, TelemetrySampleGenerator generator) {
         this.vehicles = vehicles;
         this.telemetryInterval = telemetryInterval;
+        this.generator = generator;
     }
 
     public static DeviceSimulatorFleet connect(DeviceSimulatorSettings settings) throws MqttException {
@@ -45,7 +54,8 @@ public final class DeviceSimulatorFleet implements AutoCloseable {
                 settings.orgId(), vehicleId, settings.brokerUrl(), settings.username(), settings.password()
             ));
         }
-        return new DeviceSimulatorFleet(vehicles, settings.telemetryInterval());
+        TelemetrySampleGenerator generator = new TelemetrySampleGenerator(settings.bounds(), settings.telemetryInterval());
+        return new DeviceSimulatorFleet(vehicles, settings.telemetryInterval(), generator);
     }
 
     public List<SimulatedVehicle> vehicles() {
