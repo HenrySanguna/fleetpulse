@@ -95,6 +95,11 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
   // draft -- used for both an explicit "New geofence" action and after a
   // successful save, without this component needing an imperative method.
   readonly resetToken = input<number>(0);
+  // Dispatcher UX (non-FLEET_ADMIN, GeofenceController's own
+  // `@PreAuthorize("hasRole('FLEET_ADMIN')")` on create/update/delete): hides
+  // the drawing toolbar so a non-admin only ever sees the map's read-only
+  // existingGeofences context, never a shape they cannot save.
+  readonly readOnly = input<boolean>(false);
 
   readonly draftChange = output<GeofenceDraft | undefined>();
 
