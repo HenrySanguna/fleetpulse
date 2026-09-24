@@ -5,6 +5,7 @@ import {
   distanceMeters,
   draftToFeature,
   draftVerticesToFeatureCollection,
+  geofenceBounds,
   openRing,
   toGeoPointRequests,
   toGeofenceFeatureCollection,
@@ -93,6 +94,44 @@ describe('toGeofenceFeatureCollection', () => {
     ];
 
     expect(toGeofenceFeatureCollection(geofences).features).toEqual([]);
+  });
+});
+
+describe('geofenceBounds', () => {
+  it('returns the min/max lon/lat bounding box for a polygon geofence', () => {
+    const geofence: GeofenceResponse = {
+      id: 'g1',
+      name: 'Depot',
+      vertices: [
+        { lat: 10, lon: 20 },
+        { lat: 30, lon: 5 },
+        { lat: 20, lon: 15 },
+      ],
+    };
+
+    expect(geofenceBounds(geofence)).toEqual([
+      [5, 10],
+      [20, 30],
+    ]);
+  });
+
+  it('returns the same point twice for a single-vertex geofence', () => {
+    expect(geofenceBounds({ vertices: [{ lat: 1, lon: 2 }] })).toEqual([
+      [2, 1],
+      [2, 1],
+    ]);
+  });
+
+  it('ignores vertices missing lat/lon', () => {
+    expect(geofenceBounds({ vertices: [{ lat: undefined, lon: undefined }, { lat: 1, lon: 2 }] })).toEqual([
+      [2, 1],
+      [2, 1],
+    ]);
+  });
+
+  it('returns undefined when there are no valid vertices', () => {
+    expect(geofenceBounds({ vertices: [] })).toBeUndefined();
+    expect(geofenceBounds({})).toBeUndefined();
   });
 });
 

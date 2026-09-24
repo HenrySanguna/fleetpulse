@@ -37,6 +37,7 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
     readonly addLayerCalls: Array<Record<string, unknown>> = [];
     readonly removeCalls: number[] = [];
     readonly easeToCalls: Array<Record<string, unknown>> = [];
+    readonly fitBoundsCalls: Array<[unknown, unknown]> = [];
     readonly doubleClickZoom = { disable: vi.fn() };
     private readonly sources = new Map<string, FakeGeoJSONSource>();
     private readonly listeners = new Map<string, Handler[]>();
@@ -77,6 +78,10 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
 
     easeTo(options: Record<string, unknown>): void {
       this.easeToCalls.push(options);
+    }
+
+    fitBounds(bounds: unknown, options: unknown): void {
+      this.fitBoundsCalls.push([bounds, options]);
     }
   }
 
@@ -289,6 +294,44 @@ describe('GeofenceDrawingEditorComponent', () => {
     fixture.destroy();
 
     expect(map.removeCalls.length).toBe(1);
+  });
+
+  // Prod QA fix: list -> map. This component owns the MapLibre instance, so
+  // it (not the container) fits the view to whatever geofence was selected.
+  describe('selecting a geofence from the list', () => {
+    const geofence: GeofenceResponse = {
+      id: 'g1',
+      name: 'Depot',
+      vertices: [
+        { lat: 10, lon: 20 },
+        { lat: 30, lon: 5 },
+        { lat: 20, lon: 15 },
+      ],
+    };
+
+    it('fits the map to the selected geofence bounds', async () => {
+      const { fixture, map } = await createAndLoad();
+
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+      expect(map.fitBoundsCalls[0]?.[0]).toEqual([
+        [5, 10],
+        [20, 30],
+      ]);
+    });
+
+    it('does not fit while the admin is actively drawing a new shape', async () => {
+      const { fixture, map } = await createAndLoad();
+      clickButton(fixture, 'draw-polygon');
+      await fixture.whenStable();
+
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(0);
+    });
   });
 
   // User decision (2026-09-24): geolocation centering, same convention as

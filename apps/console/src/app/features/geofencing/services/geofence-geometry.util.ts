@@ -150,6 +150,27 @@ function circleDraftToFeature(draft: GeofenceCircleDraft): Feature<Polygon> | un
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coordinates] }, properties: {} };
 }
 
+// Task 5.2/prod-QA fix: fits the map to a saved geofence's own geometry when
+// selected from the list. `GeofenceResponse.vertices` is always the buffered
+// polygon (see openRing's doc comment -- a circle's vertices ARE its
+// ST_Buffer'd polygon), so bounding-box math over them covers polygons and
+// circles alike without needing a separate center/radius branch.
+export function geofenceBounds(geofence: GeofenceResponse): [[number, number], [number, number]] | undefined {
+  const vertices = (geofence.vertices ?? []).filter(
+    (vertex): vertex is GeoPointResponse & { lat: number; lon: number } =>
+      typeof vertex.lat === 'number' && typeof vertex.lon === 'number',
+  );
+  if (vertices.length === 0) {
+    return undefined;
+  }
+  const lats = vertices.map((vertex) => vertex.lat);
+  const lons = vertices.map((vertex) => vertex.lon);
+  return [
+    [Math.min(...lons), Math.min(...lats)],
+    [Math.max(...lons), Math.max(...lats)],
+  ];
+}
+
 function toCoordinateRing(vertices: readonly GeoPointResponse[]): [number, number][] | undefined {
   const coordinates: [number, number][] = [];
   for (const vertex of vertices) {

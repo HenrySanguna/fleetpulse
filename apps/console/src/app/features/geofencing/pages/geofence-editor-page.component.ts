@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
@@ -104,6 +104,23 @@ export class GeofenceEditorPageComponent implements OnInit {
     }
     return this.isEditing() ? this.formValid() : this.draft() !== undefined && this.formValid();
   });
+
+  constructor() {
+    // Dispatcher UX: a non-admin can view a selected geofence's fields but
+    // must never be able to edit them, since save()/create()/update() are
+    // hidden already but a raw form field would otherwise still be typable.
+    // Driven off the signal (not a one-time check) so a role change mid-session
+    // takes effect immediately. `disable()`/`enable()` re-emit statusChanges,
+    // which formStatus above already tracks -- canSave short-circuits on
+    // `!canManageGeofences()` regardless, so this never affects its result.
+    effect(() => {
+      if (this.canManageGeofences()) {
+        this.form.enable();
+      } else {
+        this.form.disable();
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.geofenceService.load();

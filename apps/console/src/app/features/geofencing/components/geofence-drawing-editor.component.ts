@@ -25,6 +25,7 @@ import {
   distanceMeters,
   draftToFeature,
   draftVerticesToFeatureCollection,
+  geofenceBounds,
   toGeofenceFeatureCollection,
 } from '../services/geofence-geometry.util';
 
@@ -100,6 +101,11 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
   // the drawing toolbar so a non-admin only ever sees the map's read-only
   // existingGeofences context, never a shape they cannot save.
   readonly readOnly = input<boolean>(false);
+  // Prod QA fix: the geofence currently selected in the container's list --
+  // fitting the map to it is this component's job since it's the one that
+  // owns the MapLibre instance (same "map owns its own centering" split as
+  // the resetToken-driven draft reset above).
+  readonly selectedGeofence = input<GeofenceResponse | undefined>(undefined);
 
   readonly draftChange = output<GeofenceDraft | undefined>();
 
@@ -163,6 +169,28 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
     effect(() => {
       this.resetToken();
       this.resetDrawingState();
+    });
+
+    // Prod QA fix: list -> map, same convention as LiveMapComponent's own
+    // list -> map centering (task 5.2) -- reads unconditionally before any
+    // early return so a later style-load/map-creation still observes a
+    // selection that happened first. Never fits while the admin is actively
+    // drawing a new shape (`mode() !== 'idle'`); selecting a different
+    // geofence from the list already resets that in-progress drawing via the
+    // resetToken effect above, so this effect naturally re-fires once mode
+    // settles back to idle.
+    effect(() => {
+      const geofence = this.selectedGeofence();
+      const map = this.map;
+      const styleLoaded = this.styleLoaded();
+      const mode = this.mode();
+      if (!geofence || !map || !styleLoaded || mode !== 'idle') {
+        return;
+      }
+      const bounds = geofenceBounds(geofence);
+      if (bounds) {
+        map.fitBounds(bounds, { padding: 64, maxZoom: 16 });
+      }
     });
 
     // User decision (2026-09-24): center the drawing map on the dispatcher's
