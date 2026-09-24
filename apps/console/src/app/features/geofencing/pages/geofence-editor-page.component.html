@@ -2,7 +2,9 @@
   <aside class="sidebar flex w-80 shrink-0 flex-col overflow-hidden">
     <div class="sidebar-head flex items-center justify-between">
       <h2 class="text-base font-bold" style="color: var(--fp-text)">Geofences</h2>
-      <p-button data-testid="new-geofence" label="New" size="small" (onClick)="startNewGeofence()" />
+      @if (canManageGeofences()) {
+        <p-button data-testid="new-geofence" label="New" size="small" (onClick)="startNewGeofence()" />
+      }
     </div>
 
     @if (loading()) {
@@ -58,13 +60,15 @@
         <p class="text-sm text-red-600">{{ saveError() }}</p>
       }
 
-      <p-button
-        data-testid="save-geofence"
-        [label]="isEditing() ? 'Update geofence' : 'Save geofence'"
-        [disabled]="!canSave()"
-        styleClass="w-full"
-        (onClick)="save()"
-      />
+      @if (canManageGeofences()) {
+        <p-button
+          data-testid="save-geofence"
+          [label]="isEditing() ? 'Update geofence' : 'Save geofence'"
+          [disabled]="!canSave()"
+          styleClass="w-full"
+          (onClick)="save()"
+        />
+      }
     </form>
   </aside>
 
@@ -72,6 +76,7 @@
     <app-geofence-drawing-editor
       [existingGeofences]="geofences()"
       [resetToken]="resetToken()"
+      [readOnly]="!canManageGeofences()"
       (draftChange)="onDraftChange($event)"
     />
   </main>

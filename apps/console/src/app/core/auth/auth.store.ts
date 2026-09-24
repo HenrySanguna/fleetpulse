@@ -1,8 +1,8 @@
-import { inject } from '@angular/core';
+import { computed, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { type Observable, catchError, map, of, shareReplay } from 'rxjs';
-import type { DispatcherSelfView } from '@fleetpulse/api-client';
+import { DispatcherSelfView } from '@fleetpulse/api-client';
 import { AuthService } from './auth.service';
 
 interface AuthStoreState {
@@ -27,6 +27,13 @@ const INITIAL_STATE: AuthStoreState = {
 export const AuthStore = signalStore(
   { providedIn: 'root' },
   withState<AuthStoreState>(INITIAL_STATE),
+  withComputed(({ dispatcher }) => ({
+    // Backend authority for FLEET_ADMIN-only mutations is GeofenceController
+    // etc.'s own `@PreAuthorize("hasRole('FLEET_ADMIN')")` -- this only
+    // drives console UI (hiding controls a non-admin's request would 403 on
+    // anyway), never a security boundary by itself.
+    isFleetAdmin: computed(() => dispatcher()?.role === DispatcherSelfView.RoleEnum.FleetAdmin),
+  })),
   withMethods((store) => {
     const authService = inject(AuthService);
     let inFlight: Observable<boolean> | undefined;

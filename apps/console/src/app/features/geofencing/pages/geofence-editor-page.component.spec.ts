@@ -2,12 +2,14 @@ import { Component, input, output } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Button } from 'primeng/button';
 import { InputNumber } from 'primeng/inputnumber';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { of, throwError } from 'rxjs';
-import type { GeofenceResponse } from '@fleetpulse/api-client';
+import type { DispatcherSelfView, GeofenceResponse } from '@fleetpulse/api-client';
+import { AuthStore } from '../../../core/auth/auth.store';
 import type { GeofenceDraft } from '../models/geofence-draft.model';
 import { GeofenceService } from '../services/geofence.service';
 import { GeofenceStore } from '../services/geofence.store';
@@ -21,8 +23,12 @@ import { GeofenceEditorPageComponent } from './geofence-editor-page.component';
 class FakeGeofenceDrawingEditorComponent {
   readonly existingGeofences = input<readonly GeofenceResponse[]>([]);
   readonly resetToken = input<number>(0);
+  readonly readOnly = input<boolean>(false);
   readonly draftChange = output<GeofenceDraft | undefined>();
 }
+
+const FLEET_ADMIN: DispatcherSelfView = { id: 'admin1', organizationId: 'org-1', email: 'admin@example.com', role: 'FLEET_ADMIN' };
+const DISPATCHER: DispatcherSelfView = { id: 'd1', organizationId: 'org-1', email: 'dispatcher@example.com', role: 'DISPATCHER' };
 
 type Fixture = ComponentFixture<GeofenceEditorPageComponent>;
 
@@ -57,6 +63,7 @@ function saveButtonDisabled(fixture: Fixture): boolean {
 describe('GeofenceEditorPageComponent', () => {
   let geofenceService: { load: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
   let store: InstanceType<typeof GeofenceStore>;
+  let authStore: InstanceType<typeof AuthStore>;
 
   beforeEach(() => {
     geofenceService = { load: vi.fn(), create: vi.fn(), update: vi.fn() };
@@ -67,6 +74,11 @@ describe('GeofenceEditorPageComponent', () => {
       set: { imports: [ReactiveFormsModule, Button, InputNumber, InputText, Select, FakeGeofenceDrawingEditorComponent] },
     });
     store = TestBed.inject(GeofenceStore);
+    authStore = TestBed.inject(AuthStore);
+    // Every existing test below exercises FLEET_ADMIN behaviour (the console's
+    // historical default before dispatcher UX existed); the dedicated 'role-based
+    // access' describe block below overrides this per test for the DISPATCHER case.
+    authStore.setDispatcher(FLEET_ADMIN);
   });
 
   function createFixture() {
@@ -231,5 +243,63 @@ describe('GeofenceEditorPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Failed to save the geofence');
     const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
     expect(nameInput.value).toBe('Depot');
+  });
+
+  it('save() maps a 403 response to a permission message, leaving other errors with the generic message', () => {
+    geofenceService.create.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+    const fixture = createFixture();
+    setNameInput(fixture, 'Depot');
+    emitDraft(fixture, { shape: 'POLYGON', vertices: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }, { lat: 3, lon: 1 }] });
+
+    clickButton(fixture, 'save-geofence');
+
+    expect(fixture.nativeElement.textContent).toContain("You don't have permission to manage geofences.");
+    expect(fixture.nativeElement.textContent).not.toContain('Failed to save the geofence');
+  });
+
+  // Dispatcher UX: backend create/update/delete require FLEET_ADMIN
+  // (GeofenceController). A non-admin gets a read-only list/map instead of
+  // controls whose request would just 403.
+  describe('role-based access', () => {
+    beforeEach(() => {
+      authStore.setDispatcher(DISPATCHER);
+    });
+
+    it('hides the "New" button and the Save/Update button for a non-admin', () => {
+      const fixture = createFixture();
+
+      expect(fixture.debugElement.query(By.css('[data-testid="new-geofence"]'))).toBeNull();
+      expect(fixture.debugElement.query(By.css('[data-testid="save-geofence"]'))).toBeNull();
+    });
+
+    it('marks the drawing editor read-only for a non-admin', () => {
+      const fixture = createFixture();
+
+      const editor = fixture.debugElement.query(By.directive(FakeGeofenceDrawingEditorComponent))
+        .componentInstance as FakeGeofenceDrawingEditorComponent;
+      expect(editor.readOnly()).toBe(true);
+    });
+
+    it('still shows the list and the selected geofence in the form for viewing', () => {
+      const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_ENTER', vertices: [] };
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+
+      click(fixture, 'select-geofence-g1');
+
+      const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
+      expect(nameInput.value).toBe('Depot');
+    });
+
+    it('shows the "New" button, the drawing editor without readOnly, and the Save button again for a FLEET_ADMIN', () => {
+      authStore.setDispatcher(FLEET_ADMIN);
+      const fixture = createFixture();
+
+      expect(fixture.debugElement.query(By.css('[data-testid="new-geofence"]'))).not.toBeNull();
+      expect(fixture.debugElement.query(By.css('[data-testid="save-geofence"]'))).not.toBeNull();
+      const editor = fixture.debugElement.query(By.directive(FakeGeofenceDrawingEditorComponent))
+        .componentInstance as FakeGeofenceDrawingEditorComponent;
+      expect(editor.readOnly()).toBe(false);
+    });
   });
 });

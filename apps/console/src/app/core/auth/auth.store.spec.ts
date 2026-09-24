@@ -114,4 +114,20 @@ describe('AuthStore', () => {
     store.ensureChecked().subscribe();
     expect(authService.me).toHaveBeenCalledTimes(1);
   });
+
+  it('isFleetAdmin() is false with no dispatcher signed in', () => {
+    expect(store.isFleetAdmin()).toBe(false);
+  });
+
+  it('isFleetAdmin() is false for a DISPATCHER role', () => {
+    store.setDispatcher(dispatcher);
+
+    expect(store.isFleetAdmin()).toBe(false);
+  });
+
+  it('isFleetAdmin() is true for a FLEET_ADMIN role', () => {
+    store.setDispatcher({ ...dispatcher, role: 'FLEET_ADMIN' });
+
+    expect(store.isFleetAdmin()).toBe(true);
+  });
 });

@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
 import { Button } from 'primeng/button';
 import { InputNumber } from 'primeng/inputnumber';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { GeofenceRequest, type GeofenceResponse } from '@fleetpulse/api-client';
+import { AuthStore } from '../../../core/auth/auth.store';
 import { GeofenceDrawingEditorComponent } from '../components/geofence-drawing-editor.component';
 import type { GeofenceDraft } from '../models/geofence-draft.model';
 import { openRing, toGeoPointRequests } from '../services/geofence-geometry.util';
@@ -59,6 +61,7 @@ function defaultFormValue(geofence?: GeofenceResponse): { name: string; rule: Ge
 export class GeofenceEditorPageComponent implements OnInit {
   private readonly geofenceService = inject(GeofenceService);
   private readonly store = inject(GeofenceStore);
+  private readonly authStore = inject(AuthStore);
 
   protected readonly geofences = this.store.geofences;
   protected readonly loading = this.store.loading;
@@ -66,6 +69,10 @@ export class GeofenceEditorPageComponent implements OnInit {
   protected readonly selected = this.store.selected;
   protected readonly ruleOptions = RULE_OPTIONS;
   protected readonly ruleEnum = GeofenceRequest.RuleEnum;
+  // Backend create/update/delete require FLEET_ADMIN (GeofenceController);
+  // this only hides controls a dispatcher's request would 403 on anyway --
+  // save() below still handles a 403 defensively (see the error handler).
+  protected readonly canManageGeofences = this.authStore.isFleetAdmin;
 
   protected readonly resetToken = signal(0);
   protected readonly draft = signal<GeofenceDraft | undefined>(undefined);
@@ -92,7 +99,7 @@ export class GeofenceEditorPageComponent implements OnInit {
   // A new geofence needs a drawn shape; an edit only ever resends the
   // selected geofence's own existing vertices (see buildUpdateRequest).
   protected readonly canSave = computed(() => {
-    if (this.saving()) {
+    if (this.saving() || !this.canManageGeofences()) {
       return false;
     }
     return this.isEditing() ? this.formValid() : this.draft() !== undefined && this.formValid();
@@ -121,7 +128,7 @@ export class GeofenceEditorPageComponent implements OnInit {
   }
 
   protected save(): void {
-    if (this.form.invalid) {
+    if (!this.canManageGeofences() || this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
@@ -142,7 +149,11 @@ export class GeofenceEditorPageComponent implements OnInit {
       error: (error: unknown) => {
         console.error('GeofenceEditorPageComponent: failed to save geofence', error);
         this.saving.set(false);
-        this.saveError.set('Failed to save the geofence. Check the shape and try again.');
+        this.saveError.set(
+          error instanceof HttpErrorResponse && error.status === 403
+            ? "You don't have permission to manage geofences."
+            : 'Failed to save the geofence. Check the shape and try again.',
+        );
       },
     });
   }

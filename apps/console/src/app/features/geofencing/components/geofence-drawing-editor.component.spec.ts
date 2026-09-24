@@ -268,6 +268,21 @@ describe('GeofenceDrawingEditorComponent', () => {
     expect(lastCall.features).toHaveLength(1);
   });
 
+  // Dispatcher UX: a non-FLEET_ADMIN gets a read-only map (GeofenceEditorPageComponent
+  // binds `readOnly` from its own `canManageGeofences`), never drawing controls
+  // whose create/update request would just 403.
+  it('hides the drawing toolbar entirely when readOnly is true', async () => {
+    const { fixture } = await createAndLoad();
+
+    expect(fixture.debugElement.query(By.css('[data-testid="draw-polygon"]'))).not.toBeNull();
+
+    fixture.componentRef.setInput('readOnly', true);
+    await fixture.whenStable();
+
+    expect(fixture.debugElement.query(By.css('[data-testid="draw-polygon"]'))).toBeNull();
+    expect(fixture.debugElement.query(By.css('[data-testid="draw-circle"]'))).toBeNull();
+  });
+
   it('removes the map instance on destroy', async () => {
     const { fixture, map } = await createAndLoad();
 
