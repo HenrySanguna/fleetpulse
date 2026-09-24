@@ -40,9 +40,9 @@ server:
         # legitimate cross-site SPA+API split and still requires Secure
         # (already true, TLS via caddy) -- the CSRF exposure that
         # SameSite=Strict would otherwise additionally guard against is
-        # already independently covered by csrf().spa()'s XSRF-TOKEN
-        # double-submit header (SecurityConfig), so this is not an
-        # unmitigated relaxation.
+        # already independently covered by SecurityConfig's synchronizer-
+        # token CSRF protection (X-CSRF-TOKEN, session-bound since
+        # cross-site-csrf-token), so this is not an unmitigated relaxation.
         http-only: true
         secure: true
         same-site: none

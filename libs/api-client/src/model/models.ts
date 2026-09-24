@@ -2,6 +2,7 @@ export * from './activityReportResponse';
 export * from './activityReportSummaryResponse';
 export * from './activityTripResponse';
 export * from './alertResponse';
+export * from './csrfTokenResponse';
 export * from './dailyDistancePointResponse';
 export * from './deviceCredentialResponse';
 export * from './dispatcherSelfView';

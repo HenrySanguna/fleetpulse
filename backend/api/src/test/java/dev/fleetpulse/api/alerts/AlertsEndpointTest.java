@@ -158,7 +158,7 @@ class AlertsEndpointTest {
         UUID alertId = UUID.randomUUID();
         seedAlert(alertId, org.getId(), vehicleId, "speeding", null, Instant.now());
         HttpHeaders mutation = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-ack@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-ack@acme.test", "s3cret-pass"));
 
         ResponseEntity<AlertResponse> first = restTemplate.exchange(
             baseUrl() + "/api/alerts/" + alertId + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(mutation), AlertResponse.class);
@@ -185,7 +185,7 @@ class AlertsEndpointTest {
         assertThat(listed.getBody()).isEmpty();
 
         HttpHeaders mutation = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-iso-a@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-iso-a@acme.test", "s3cret-pass"));
         ResponseEntity<String> acknowledged = restTemplate.exchange(
             baseUrl() + "/api/alerts/" + alertInOrgB + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(mutation), String.class);
         assertThat(acknowledged.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);

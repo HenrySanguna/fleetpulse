@@ -13,6 +13,7 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -50,7 +51,12 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(properties.allowedOriginPatterns());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
+        // "X-CSRF-TOKEN": HttpSessionCsrfTokenRepository's default header
+        // name (cross-site-csrf-token) -- CsrfTokenController hands this
+        // name back dynamically, but the browser's own CORS preflight still
+        // needs it allow-listed here independently, or it would block the
+        // console from ever sending it cross-site.
+        configuration.setAllowedHeaders(List.of("Content-Type", "X-CSRF-TOKEN"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
@@ -97,16 +103,51 @@ public class SecurityConfig {
             // provisioning/revocation/rotation being the first ones this
             // change actually exercises over HTTP) was silently rejected
             // with 403 before this fix, since the client never had any way
-            // to learn the expected token. csrf().spa() is Spring Security's
-            // own built-in single-page-application recipe: it swaps in
-            // CookieCsrfTokenRepository (a JS-readable, non-HttpOnly
-            // `XSRF-TOKEN` cookie) and a request handler that resolves the
-            // token eagerly on every response and accepts it back verbatim
-            // via the `X-XSRF-TOKEN` header -- exactly the convention
-            // Angular's HttpClient implements out of the box. /login stays
-            // exempt because there is no prior response to have sourced that
-            // cookie from yet.
-            .csrf(csrf -> csrf.spa().ignoringRequestMatchers("/login"))
+            // to learn the expected token.
+            //
+            // cross-site-csrf-token: originally used csrf().spa() (Spring
+            // Security's cookie-based SPA recipe: CookieCsrfTokenRepository
+            // + SpaCsrfTokenRequestHandler). That does not survive the
+            // console (fleetpulse-console.pages.dev) and api (its own host)
+            // being genuinely different sites -- two independent failures:
+            // (1) the console's own document.cookie can never read a cookie
+            // a *different* origin set, no matter its SameSite/HttpOnly
+            // attributes, so the SPA has no way to mirror the value into a
+            // header; (2) even if it could, CookieCsrfTokenRepository treats
+            // the *incoming* cookie as the source of truth, and a cross-site
+            // XHR/fetch is not guaranteed to echo it back.
+            // HttpSessionCsrfTokenRepository sidesteps both: the expected
+            // token lives server-side, keyed by the `SESSION` cookie
+            // (SameSite=None, already reliably sent -- see application.yml),
+            // and CsrfTokenController (GET /api/csrf) hands the token to the
+            // SPA over the response body instead of a cookie.
+            //
+            // .spa() itself is also dropped, not just its repository: its
+            // SpaCsrfTokenRequestHandler is built for that cookie recipe
+            // specifically -- on the way back in, it treats a *header*
+            // value as the raw, unmasked token verbatim (matching a
+            // JS-read cookie), never XOR-unmasking it. But the token this
+            // endpoint hands out is read via CsrfTokenArgumentResolver
+            // (`CsrfToken token` controller parameter), which Spring
+            // Security's plain default CsrfFilter requestHandler
+            // (XorCsrfTokenRequestAttributeHandler -- BREACH protection,
+            // wired in even without calling .spa()) always exposes
+            // XOR-masked. Pairing that masked value with a handler that
+            // expects raw-in-header, as .spa() does, can never validate --
+            // confirmed live (every mutating request rejected 403 even with
+            // a same-session token attached). Leaving the default handler
+            // in place keeps generation (masked-out) and validation
+            // (masked-in, XOR-unmasked before comparing) consistent.
+            // Spring Security also rotates the session's CSRF token on
+            // successful authentication (session-fixation protection), so a
+            // token fetched before login is stale the instant /login
+            // succeeds -- the SPA must call GET /api/csrf again after
+            // login, never reuse a pre-login token (documented on the
+            // frontend interceptor). /login stays exempt: there is no
+            // authenticated session yet to have sourced a token from.
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(new HttpSessionCsrfTokenRepository())
+                .ignoringRequestMatchers("/login"))
             // Task 2.5: must run after SecurityContextHolderFilter (which
             // restores the Authentication persisted in the session) and
             // before AuthorizationFilter (which decides access), so a

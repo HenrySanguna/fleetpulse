@@ -115,7 +115,7 @@ class DeviceTelemetryVehicleIsolationTest {
         Vehicle otherVehicle = vehicles.save(new Vehicle(org, "Truck B"));
 
         HttpHeaders adminSession = DispatcherLoginTestSupport.mutationHeadersFrom(
-            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-isolation@acme.test", "s3cret-pass"));
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "admin-isolation@acme.test", "s3cret-pass"));
         DeviceCredentialResponse credentials = DeviceCredentialTestSupport.provision(restTemplate, baseUrl(), adminSession, ownDevice.getId());
 
         String ownTopic = "fleet/" + org.getId() + "/vehicle/" + ownDevice.getVehicle().getId() + "/telemetry";
