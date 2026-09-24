@@ -1,17 +1,19 @@
 #!/bin/sh
-# Docker HEALTHCHECK for the shared api/processor image. The two processes
-# need different checks because processor deliberately exposes no HTTP
-# server (see design.md, "Salud": "processor no expone HTTP; si muere,
-# ninguna pagina se rompe"). Its heartbeat freshness is observed externally,
-# via api's own /actuator/health processorHeartbeat indicator (task 5.3),
-# not from inside this container.
+# Docker HEALTHCHECK for the shared api/processor image. These processes
+# need different checks because processor (and simulator, task 5.1's demo
+# service) deliberately expose no HTTP server (see design.md, "Salud":
+# "processor no expone HTTP; si muere, ninguna pagina se rompe"). processor's
+# heartbeat freshness is observed externally, via api's own
+# /actuator/health processorHeartbeat indicator (task 5.3); simulator has no
+# equivalent external signal (it is a demo-only tool, not part of the
+# monitored production path), so "process still alive" is the whole check.
 set -eu
 
 # See entrypoint.sh: no provider-injected fallback since the Oracle Cloud
 # migration -- FLEETPULSE_PROCESS is always set explicitly by the caller.
 process="${FLEETPULSE_PROCESS:-}"
 
-if [ "$process" = "processor" ]; then
+if [ "$process" = "processor" ] || [ "$process" = "simulator" ]; then
   # PID 1 is the java process itself (entrypoint.sh execs it); if it is gone,
   # the container is not healthy.
   kill -0 1 2>/dev/null

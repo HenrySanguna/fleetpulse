@@ -38,9 +38,11 @@ public final class DeviceSimulatorFleet implements AutoCloseable {
 
     public static DeviceSimulatorFleet connect(DeviceSimulatorSettings settings) throws MqttException {
         List<SimulatedVehicle> vehicles = new ArrayList<>(settings.vehicleCount());
+        boolean fixedIds = !settings.vehicleIds().isEmpty();
         for (int i = 0; i < settings.vehicleCount(); i++) {
+            UUID vehicleId = fixedIds ? settings.vehicleIds().get(i) : UUID.randomUUID();
             vehicles.add(new SimulatedVehicle(
-                settings.orgId(), UUID.randomUUID(), settings.brokerUrl(), settings.username(), settings.password()
+                settings.orgId(), vehicleId, settings.brokerUrl(), settings.username(), settings.password()
             ));
         }
         return new DeviceSimulatorFleet(vehicles, settings.telemetryInterval());
