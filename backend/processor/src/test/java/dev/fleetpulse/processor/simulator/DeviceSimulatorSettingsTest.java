@@ -26,6 +26,7 @@ class DeviceSimulatorSettingsTest {
         assertThat(settings.brokerUrl()).isEqualTo("tcp://localhost:1883");
         assertThat(settings.telemetryInterval()).isEqualTo(Duration.ofSeconds(5));
         assertThat(settings.runDuration()).isNull();
+        assertThat(settings.bounds()).isEqualTo(SimulationBounds.GLOBAL);
     }
 
     // Triangulation: every override actually overrides its own default and
@@ -40,7 +41,8 @@ class DeviceSimulatorSettingsTest {
             "SIMULATOR_MQTT_USERNAME", "device-user",
             "SIMULATOR_MQTT_PASSWORD", "device-pass",
             "SIMULATOR_TELEMETRY_INTERVAL_MS", "250",
-            "SIMULATOR_RUN_DURATION_MS", "90000"
+            "SIMULATOR_RUN_DURATION_MS", "90000",
+            "SIMULATOR_BOUNDS", "40.35,-3.80,40.52,-3.58"
         );
 
         DeviceSimulatorSettings settings = DeviceSimulatorSettings.fromEnvironment(env);
@@ -52,6 +54,7 @@ class DeviceSimulatorSettingsTest {
         assertThat(settings.password()).isEqualTo("device-pass");
         assertThat(settings.telemetryInterval()).isEqualTo(Duration.ofMillis(250));
         assertThat(settings.runDuration()).isEqualTo(Duration.ofMillis(90000));
+        assertThat(settings.bounds()).isEqualTo(new SimulationBounds(40.35, -3.80, 40.52, -3.58));
     }
 
     @Test
@@ -110,5 +113,35 @@ class DeviceSimulatorSettingsTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("SIMULATOR_VEHICLE_IDS")
             .hasMessageContaining("not-a-uuid");
+    }
+
+    // Task 5.9 (Madrid demo decision): SIMULATOR_BOUNDS confines demo
+    // vehicles to one region -- wrong token count fails loudly instead of
+    // silently falling back to the global default.
+    @Test
+    void boundsWithWrongPartCountIsRejectedWithAClearError() {
+        Map<String, String> env = Map.of("SIMULATOR_BOUNDS", "40.35,-3.80,40.52");
+
+        assertThatThrownBy(() -> DeviceSimulatorSettings.fromEnvironment(env))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SIMULATOR_BOUNDS");
+    }
+
+    @Test
+    void boundsWithANonNumericPartIsRejectedWithAClearError() {
+        Map<String, String> env = Map.of("SIMULATOR_BOUNDS", "not-a-number,-3.80,40.52,-3.58");
+
+        assertThatThrownBy(() -> DeviceSimulatorSettings.fromEnvironment(env))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SIMULATOR_BOUNDS");
+    }
+
+    @Test
+    void invertedBoundsAreRejectedWithAClearError() {
+        Map<String, String> env = Map.of("SIMULATOR_BOUNDS", "40.52,-3.80,40.35,-3.58");
+
+        assertThatThrownBy(() -> DeviceSimulatorSettings.fromEnvironment(env))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("latitude");
     }
 }

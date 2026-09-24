@@ -183,6 +183,9 @@ services:
       SIMULATOR_MQTT_USERNAME: demo-simulator
       SIMULATOR_MQTT_PASSWORD: ${MOSQUITTO_DEMO_SIMULATOR_PASSWORD}
       SIMULATOR_TELEMETRY_INTERVAL_MS: "2000"
+      # Task 5.9 (user decision): demo vehicles circulate in Madrid instead
+      # of over the whole globe. minLat,minLon,maxLat,maxLon.
+      SIMULATOR_BOUNDS: "40.35,-3.80,40.52,-3.58"
     depends_on:
       mosquitto:
         condition: service_healthy

@@ -20,7 +20,8 @@ public record DeviceSimulatorSettings(
     String username,
     String password,
     Duration telemetryInterval,
-    Duration runDuration
+    Duration runDuration,
+    SimulationBounds bounds
 ) {
 
     static final int DEFAULT_VEHICLE_COUNT = 50;
@@ -37,7 +38,10 @@ public record DeviceSimulatorSettings(
         String password = env.get("SIMULATOR_MQTT_PASSWORD");
         Duration telemetryInterval = durationMillisOrDefault(env.get("SIMULATOR_TELEMETRY_INTERVAL_MS"), DEFAULT_TELEMETRY_INTERVAL);
         Duration runDuration = durationMillisOrDefault(env.get("SIMULATOR_RUN_DURATION_MS"), null);
-        return new DeviceSimulatorSettings(vehicleCount, vehicleIds, orgId, brokerUrl, username, password, telemetryInterval, runDuration);
+        SimulationBounds bounds = parseBounds(env.get("SIMULATOR_BOUNDS"));
+        return new DeviceSimulatorSettings(
+            vehicleCount, vehicleIds, orgId, brokerUrl, username, password, telemetryInterval, runDuration, bounds
+        );
     }
 
     public Optional<Duration> boundedRunDuration() {
@@ -88,6 +92,31 @@ public record DeviceSimulatorSettings(
             }
         }
         return vehicleIds.size();
+    }
+
+    // Task 5.9 (Madrid demo decision): SIMULATOR_BOUNDS confines seeded and
+    // moving demo vehicles to one geographic box instead of the whole globe.
+    // Unset keeps the pre-existing global range (local dev / back-compat);
+    // prod sets it explicitly in docker-compose.prod.yml to a Madrid box.
+    private static SimulationBounds parseBounds(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return SimulationBounds.GLOBAL;
+        }
+        String[] parts = raw.split(",");
+        if (parts.length != 4) {
+            throw new IllegalArgumentException(
+                "SIMULATOR_BOUNDS must be 'minLat,minLon,maxLat,maxLon', got: '" + raw + "'"
+            );
+        }
+        try {
+            double minLat = Double.parseDouble(parts[0].trim());
+            double minLon = Double.parseDouble(parts[1].trim());
+            double maxLat = Double.parseDouble(parts[2].trim());
+            double maxLon = Double.parseDouble(parts[3].trim());
+            return new SimulationBounds(minLat, minLon, maxLat, maxLon);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("SIMULATOR_BOUNDS contains a malformed number: '" + raw + "'", ex);
+        }
     }
 
     private static int intOrDefault(String raw, int defaultValue) {
