@@ -190,6 +190,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The secrets context is not allowed in a step-level `if:`; exposing it
+    # as job env lets the demo step gate on env instead.
+    env:
+      MOSQUITTO_DEMO_SIMULATOR_PASSWORD: ${{ secrets.MOSQUITTO_DEMO_SIMULATOR_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
 
@@ -253,9 +257,7 @@ jobs:
       # twice (this runner's shell, then the remote one over ssh) -- keep it
       # alphanumeric, no single quotes, when setting the repo secret.
       - name: Seed and start the demo simulator (opt-in)
-        if: ${{ secrets.MOSQUITTO_DEMO_SIMULATOR_PASSWORD != '' }}
-        env:
-          MOSQUITTO_DEMO_SIMULATOR_PASSWORD: ${{ secrets.MOSQUITTO_DEMO_SIMULATOR_PASSWORD }}
+        if: ${{ env.MOSQUITTO_DEMO_SIMULATOR_PASSWORD != '' }}
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/oracle_deploy_key "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_SSH_HOST }}" \
