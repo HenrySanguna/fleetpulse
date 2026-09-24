@@ -1,11 +1,28 @@
 import type { ComponentFixture } from '@angular/core/testing';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Subject } from 'rxjs';
 import type { GeofenceResponse } from '@fleetpulse/api-client';
+import { GeolocationService, type GeolocationPoint } from '../../../core/geolocation/geolocation.service';
 import type { GeofenceDraft } from '../models/geofence-draft.model';
 import { GeofenceDrawingEditorComponent } from './geofence-drawing-editor.component';
 
 type Handler = (payload?: unknown) => void;
+
+// Same deterministic stand-in for GeolocationService.position() LiveMapComponent's
+// own spec uses: a real, controllable async source (never emits synchronously).
+class FakeGeolocationService {
+  private readonly subject = new Subject<GeolocationPoint | undefined>();
+
+  position() {
+    return this.subject.asObservable();
+  }
+
+  resolve(point: GeolocationPoint | undefined): void {
+    this.subject.next(point);
+    this.subject.complete();
+  }
+}
 
 // Same fake-`maplibre-gl` recipe LiveMapComponent's own spec established
 // (04-add-live-map): never opens a real WebGL context, only proves this
@@ -19,6 +36,7 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
     readonly addSourceCalls: Array<{ id: string; config: unknown }> = [];
     readonly addLayerCalls: Array<Record<string, unknown>> = [];
     readonly removeCalls: number[] = [];
+    readonly easeToCalls: Array<Record<string, unknown>> = [];
     readonly doubleClickZoom = { disable: vi.fn() };
     private readonly sources = new Map<string, FakeGeoJSONSource>();
     private readonly listeners = new Map<string, Handler[]>();
@@ -56,6 +74,10 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
     remove(): void {
       this.removeCalls.push(1);
     }
+
+    easeTo(options: Record<string, unknown>): void {
+      this.easeToCalls.push(options);
+    }
   }
 
   const fakeMaps: FakeMapImpl[] = [];
@@ -85,10 +107,24 @@ async function createAndLoad(): Promise<{ fixture: ComponentFixture<GeofenceDraw
   return { fixture, map };
 }
 
+// Same "writes one of its own read dependencies" convention as
+// LiveMapComponent's own spec -- the geolocation-centering effect sets
+// `initialCenterApplied`, which it also reads, so a signal write it reacts
+// to takes two flush passes to fully settle.
+function flushCenteringEffect(): void {
+  TestBed.tick();
+  TestBed.tick();
+}
+
 describe('GeofenceDrawingEditorComponent', () => {
+  let geolocationService: FakeGeolocationService;
+
   beforeEach(() => {
     fakeMaps.length = 0;
-    TestBed.configureTestingModule({});
+    geolocationService = new FakeGeolocationService();
+    TestBed.configureTestingModule({
+      providers: [{ provide: GeolocationService, useValue: geolocationService }],
+    });
   });
 
   it('creates the map against the same free, no-token tile style as the live map', async () => {
@@ -238,5 +274,55 @@ describe('GeofenceDrawingEditorComponent', () => {
     fixture.destroy();
 
     expect(map.removeCalls.length).toBe(1);
+  });
+
+  // User decision (2026-09-24): geolocation centering, same convention as
+  // LiveMapComponent's own spec -- map creation never waits on it.
+  describe('geolocation centering', () => {
+    it('creates and loads the map at the default view without waiting on geolocation', async () => {
+      const { map } = await createAndLoad();
+
+      expect(map.options['center']).toEqual([0, 0]);
+      expect(map.options['zoom']).toBe(2);
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('centers on the resolved user position via easeTo at ~zoom 12', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls).toEqual([{ center: [20, 10], zoom: 12 }]);
+    });
+
+    it('keeps the default view when geolocation is denied/unavailable', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve(undefined);
+      flushCenteringEffect();
+
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('does not center on the resolved position once the user has dragged the map', async () => {
+      const { map } = await createAndLoad();
+
+      map.fire('dragstart', { originalEvent: {} });
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('does not treat a programmatic zoomstart (no originalEvent) as user interaction', async () => {
+      const { map } = await createAndLoad();
+
+      map.fire('zoomstart', {});
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls).toEqual([{ center: [20, 10], zoom: 12 }]);
+    });
   });
 });
