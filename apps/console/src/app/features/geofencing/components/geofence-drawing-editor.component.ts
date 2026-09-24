@@ -6,16 +6,20 @@ import {
   OnDestroy,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
   viewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map as mapOperator } from 'rxjs';
 import { DecimalPipe } from '@angular/common';
 import { Map as MapLibreMap } from 'maplibre-gl';
 import type { GeoJSONSource, MapMouseEvent } from 'maplibre-gl';
 import { Button } from 'primeng/button';
 import type { GeofenceResponse } from '@fleetpulse/api-client';
+import { GeolocationService, type GeolocationPoint } from '../../../core/geolocation/geolocation.service';
 import type { GeofenceDraft, GeofencePoint } from '../models/geofence-draft.model';
 import {
   distanceMeters,
@@ -49,7 +53,21 @@ const DRAFT_VERTICES_LAYER_ID = 'geofence-draft-vertices-layer';
 
 const EMPTY_POLYGON_COLLECTION = { type: 'FeatureCollection' as const, features: [] };
 
+// Same fallback/zoom convention as LiveMapComponent's own geolocation
+// centering (user decision, 2026-09-24): create the map at this view
+// immediately, never waiting on the geolocation permission prompt.
+const DEFAULT_CENTER: [number, number] = [0, 0];
+const DEFAULT_ZOOM = 2;
+const USER_LOCATION_ZOOM = 12;
+
 type DrawingMode = 'idle' | 'polygon' | 'circle';
+
+interface GeolocationOutcome {
+  readonly settled: boolean;
+  readonly point: GeolocationPoint | undefined;
+}
+
+const PENDING_GEOLOCATION: GeolocationOutcome = { settled: false, point: undefined };
 
 // Task 5.1 (+ 5.2 console half): owns one MapLibre map instance dedicated to
 // drawing -- a separate instance from LiveMapComponent's (task 5.3), since
@@ -68,6 +86,7 @@ type DrawingMode = 'idle' | 'polygon' | 'circle';
 })
 export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy {
   private readonly mapContainer = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
+  private readonly geolocationService = inject(GeolocationService);
 
   // Rendered as read-only context while drawing, so the user can see
   // overlaps with already-saved geofences without leaving the editor.
@@ -108,6 +127,14 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
   });
 
   private map: MapLibreMap | undefined;
+  // Same "user gesture vs. programmatic move" and "settled vs. still
+  // pending" convention as LiveMapComponent's own geolocation centering.
+  private readonly userInteracted = signal(false);
+  private readonly geolocationOutcome = toSignal(
+    this.geolocationService.position().pipe(mapOperator((point): GeolocationOutcome => ({ settled: true, point }))),
+    { initialValue: PENDING_GEOLOCATION },
+  );
+  private readonly initialCenterApplied = signal(false);
 
   constructor() {
     effect(() => {
@@ -132,16 +159,60 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
       this.resetToken();
       this.resetDrawingState();
     });
+
+    // User decision (2026-09-24): center the drawing map on the dispatcher's
+    // own location once geolocation resolves, unless they already interacted
+    // with the map (drag/zoom) -- they may already be positioning the map
+    // over the area they intend to draw a geofence on. Never blocks map
+    // creation (ngAfterViewInit below always creates the map at DEFAULT_
+    // CENTER/DEFAULT_ZOOM first); falls back to that same default view if
+    // geolocation is denied/unavailable/timed out.
+    effect(() => {
+      const map = this.map;
+      // Read unconditionally, before any early return -- same reasoning as
+      // LiveMapComponent's own geolocation-centering effect: an effect only
+      // reacts to a signal it actually read on its last run, so reading this
+      // behind the guards below would miss a resolution that lands before
+      // `styleLoaded`/`map` are ready.
+      const outcome = this.geolocationOutcome();
+      if (!map || !this.styleLoaded() || this.initialCenterApplied()) {
+        return;
+      }
+      if (this.userInteracted()) {
+        this.initialCenterApplied.set(true);
+        return;
+      }
+      if (!outcome.settled) {
+        return;
+      }
+      this.initialCenterApplied.set(true);
+      if (outcome.point) {
+        map.easeTo({ center: [outcome.point.lon, outcome.point.lat], zoom: USER_LOCATION_ZOOM });
+      }
+    });
   }
 
   ngAfterViewInit(): void {
     const map = new MapLibreMap({
       container: this.mapContainer().nativeElement,
       style: MAP_STYLE_URL,
-      center: [0, 0],
-      zoom: 2,
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
     });
     this.map = map;
+
+    // Only a real user gesture carries `originalEvent` -- a programmatic
+    // easeTo (this component's own centering) never does.
+    map.on('dragstart', (event) => {
+      if (event.originalEvent) {
+        this.userInteracted.set(true);
+      }
+    });
+    map.on('zoomstart', (event) => {
+      if (event.originalEvent) {
+        this.userInteracted.set(true);
+      }
+    });
 
     map.on('load', () => {
       map.addSource(CONTEXT_SOURCE_ID, { type: 'geojson', data: EMPTY_POLYGON_COLLECTION });

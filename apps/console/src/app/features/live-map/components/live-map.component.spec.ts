@@ -1,10 +1,29 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
+import { GeolocationService, type GeolocationPoint } from '../../../core/geolocation/geolocation.service';
 import { FleetStore } from '../services/fleet.store';
 import { VehicleTrackService } from '../services/vehicle-track.service';
 import { GeofenceService } from '../../geofencing/services/geofence.service';
 import { GeofenceStore } from '../../geofencing/services/geofence.store';
 import { LiveMapComponent } from './live-map.component';
+
+// Deterministic stand-in for GeolocationService.position(): a real,
+// controllable async source (never emits synchronously), so tests can
+// assert the map is created/loaded before it resolves and can drive
+// granted/denied/pending outcomes explicitly.
+class FakeGeolocationService {
+  private readonly subject = new Subject<GeolocationPoint | undefined>();
+
+  position() {
+    return this.subject.asObservable();
+  }
+
+  resolve(point: GeolocationPoint | undefined): void {
+    this.subject.next(point);
+    this.subject.complete();
+  }
+}
 
 type Handler = (...args: unknown[]) => void;
 
@@ -23,6 +42,8 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
     readonly addLayerCalls: Array<Record<string, unknown>> = [];
     readonly removeCalls: number[] = [];
     readonly flyToCalls: Array<Record<string, unknown>> = [];
+    readonly easeToCalls: Array<Record<string, unknown>> = [];
+    readonly fitBoundsCalls: Array<[unknown, unknown]> = [];
     private readonly sources = new Map<string, FakeGeoJSONSource>();
     private readonly listeners = new Map<string, Handler[]>();
     private readonly layerListeners = new Map<string, Handler[]>();
@@ -45,9 +66,9 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
       return this;
     }
 
-    fire(event: string): void {
+    fire(event: string, payload?: unknown): void {
       for (const handler of this.listeners.get(event) ?? []) {
-        handler();
+        handler(payload);
       }
     }
 
@@ -88,6 +109,14 @@ const { fakeMaps, FakeMap } = vi.hoisted(() => {
       this.flyToCalls.push(options);
     }
 
+    easeTo(options: Record<string, unknown>): void {
+      this.easeToCalls.push(options);
+    }
+
+    fitBounds(bounds: unknown, options: unknown): void {
+      this.fitBoundsCalls.push([bounds, options]);
+    }
+
     getZoom(): number {
       return 2;
     }
@@ -118,12 +147,25 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+// The geolocation-centering effect writes `initialCenterApplied` -- one of
+// its own read dependencies -- so a signal write it reacts to (geolocation
+// resolving, a drag/zoom, a vehicle selection) takes two flush passes to
+// settle: one to run the branch and write that signal, one more so the
+// now-dirty effect re-runs and observes its own write. A single
+// `TestBed.tick()` only guarantees the first pass.
+function flushCenteringEffect(): void {
+  TestBed.tick();
+  TestBed.tick();
+}
+
 describe('LiveMapComponent', () => {
   let store: InstanceType<typeof FleetStore>;
   let geofenceStore: InstanceType<typeof GeofenceStore>;
+  let geolocationService: FakeGeolocationService;
 
   beforeEach(() => {
     fakeMaps.length = 0;
+    geolocationService = new FakeGeolocationService();
     TestBed.configureTestingModule({
       providers: [
         { provide: VehicleTrackService, useValue: { trackLine: () => undefined } },
@@ -132,6 +174,7 @@ describe('LiveMapComponent', () => {
         // is above, while GeofenceStore (the pure state it feeds) stays real
         // so renderGeofences() can be proven directly via store.setGeofences().
         { provide: GeofenceService, useValue: { load: vi.fn() } },
+        { provide: GeolocationService, useValue: geolocationService },
       ],
     });
     store = TestBed.inject(FleetStore);
@@ -290,5 +333,90 @@ describe('LiveMapComponent', () => {
     TestBed.tick();
 
     expect(map.flyToCalls.length).toBe(0);
+  });
+
+  // User decision (2026-09-24): geolocation centering. Map creation itself
+  // must never wait on it -- createAndLoad() below never resolves
+  // geolocationService before asserting the map already exists at the
+  // fallback view.
+  describe('geolocation centering', () => {
+    it('creates and loads the map at the default view without waiting on geolocation', async () => {
+      const { map } = await createAndLoad();
+
+      expect(map.options['center']).toEqual([0, 0]);
+      expect(map.options['zoom']).toBe(2);
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('centers on the resolved user position via easeTo at ~zoom 12', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls).toEqual([{ center: [20, 10], zoom: 12 }]);
+    });
+
+    it('fits the fleet bounds when geolocation is denied/unavailable and vehicle positions are known', async () => {
+      const { map } = await createAndLoad();
+      store.applySnapshot({
+        vehicles: [
+          { vehicleId: 'v1', lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
+          { vehicleId: 'v2', lat: 30, lon: 5, recordedAt: '2026-01-01T00:00:00Z' },
+        ],
+      });
+      TestBed.tick();
+
+      geolocationService.resolve(undefined);
+      flushCenteringEffect();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+      expect(map.fitBoundsCalls[0]?.[0]).toEqual([
+        [5, 10],
+        [20, 30],
+      ]);
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('keeps the default view when geolocation is denied/unavailable and no vehicle positions are known', async () => {
+      const { map } = await createAndLoad();
+
+      geolocationService.resolve(undefined);
+      flushCenteringEffect();
+
+      expect(map.easeToCalls.length).toBe(0);
+      expect(map.fitBoundsCalls.length).toBe(0);
+    });
+
+    it('does not center on the resolved position once the user has dragged the map', async () => {
+      const { map } = await createAndLoad();
+
+      map.fire('dragstart', { originalEvent: {} });
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls.length).toBe(0);
+    });
+
+    it('does not treat a programmatic zoomstart (no originalEvent) as user interaction', async () => {
+      const { map } = await createAndLoad();
+
+      map.fire('zoomstart', {});
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls).toEqual([{ center: [20, 10], zoom: 12 }]);
+    });
+
+    it('does not center on the resolved position once a vehicle has already been selected', async () => {
+      const { map } = await createAndLoad();
+
+      store.selectVehicle('some-vehicle');
+      TestBed.tick();
+      geolocationService.resolve({ lat: 10, lon: 20 });
+      flushCenteringEffect();
+
+      expect(map.easeToCalls.length).toBe(0);
+    });
   });
 });

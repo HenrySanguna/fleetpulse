@@ -9,10 +9,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map as mapOperator } from 'rxjs';
 import { Map as MapLibreMap } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
 import type { GeofenceResponse } from '@fleetpulse/api-client';
+import { GeolocationService, type GeolocationPoint } from '../../../core/geolocation/geolocation.service';
 import { FleetStore } from '../services/fleet.store';
 import { VehicleTrackService } from '../services/vehicle-track.service';
 import { VehicleInterpolationEngine } from '../services/vehicle-interpolation';
@@ -40,6 +43,20 @@ const TRACK_LAYER_ID = 'selected-vehicle-track-layer';
 const GEOFENCES_SOURCE_ID = 'geofences';
 const GEOFENCES_LAYER_ID = 'geofences-layer';
 const GEOFENCES_OUTLINE_LAYER_ID = 'geofences-outline-layer';
+
+// Fallback view used both at map creation (so creation never waits on the
+// geolocation permission prompt) and if geolocation ends up denied/
+// unavailable/timed out with no known vehicle position to fit instead.
+const DEFAULT_CENTER: [number, number] = [0, 0];
+const DEFAULT_ZOOM = 2;
+const USER_LOCATION_ZOOM = 12;
+
+interface GeolocationOutcome {
+  readonly settled: boolean;
+  readonly point: GeolocationPoint | undefined;
+}
+
+const PENDING_GEOLOCATION: GeolocationOutcome = { settled: false, point: undefined };
 
 const EMPTY_TRACK_COLLECTION: FeatureCollection<LineString, Record<string, never>> = {
   type: 'FeatureCollection',
@@ -81,6 +98,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   private readonly trackService = inject(VehicleTrackService);
   private readonly geofenceService = inject(GeofenceService);
   private readonly geofenceStore = inject(GeofenceStore);
+  private readonly geolocationService = inject(GeolocationService);
 
   private readonly interpolation = new VehicleInterpolationEngine();
   private latestVehicles: readonly VehicleState[] = [];
@@ -91,6 +109,23 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
   // already happened before that -- effects only re-run when a *signal*
   // dependency changes, not a plain class field mutation.
   private readonly styleLoaded = signal(false);
+  // Set from the map's own 'dragstart'/'zoomstart' events, but only when
+  // they carry an `originalEvent` -- that's what distinguishes a real user
+  // gesture from a programmatic move (jumpTo/easeTo/flyTo never set it).
+  private readonly userInteracted = signal(false);
+  // Geolocation resolves asynchronously and the map must never wait on it
+  // (map creation below always uses DEFAULT_CENTER/DEFAULT_ZOOM first) --
+  // `settled` distinguishes "still waiting on the browser prompt" from
+  // "resolved to no position" (denied/unavailable/timed out), which toSignal's
+  // own `initialValue` alone can't express since both cases carry `point: undefined`.
+  private readonly geolocationOutcome = toSignal(
+    this.geolocationService.position().pipe(mapOperator((point): GeolocationOutcome => ({ settled: true, point }))),
+    { initialValue: PENDING_GEOLOCATION },
+  );
+  // Guards the one-time initial centering below so it never re-fires once
+  // it has already deferred to a user interaction/vehicle selection, or
+  // already applied the resolved geolocation/fleet-bounds/default view.
+  private readonly initialCenterApplied = signal(false);
 
   constructor() {
     // Task 4.4: every time FleetStore's real (never interpolated) reported
@@ -143,16 +178,63 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       this.renderGeofences(this.geofenceStore.geofences());
     });
+
+    // User decision (2026-09-24): center the live map on the dispatcher's
+    // own location once geolocation resolves, unless they already interacted
+    // with the map (drag/zoom) or selected a vehicle -- either one means the
+    // dispatcher has already chosen what to look at, so a late-resolving
+    // geolocation prompt must not yank the view out from under them. Never
+    // blocks map creation (ngAfterViewInit below always creates the map at
+    // DEFAULT_CENTER/DEFAULT_ZOOM first).
+    effect(() => {
+      const map = this.map;
+      // Read unconditionally, before any early return: an effect only
+      // reacts to a signal it actually read on its LAST run, so reading this
+      // behind the guards below would miss a geolocation resolution that
+      // lands before `styleLoaded`/`map` are ready (the earlier runs would
+      // never have subscribed to it, and a later run reads a value that's
+      // simply never invalidated again).
+      const outcome = this.geolocationOutcome();
+      if (!map || !this.styleLoaded() || this.initialCenterApplied()) {
+        return;
+      }
+      if (this.userInteracted() || this.fleetStore.selectedVehicleId()) {
+        this.initialCenterApplied.set(true);
+        return;
+      }
+      if (!outcome.settled) {
+        return;
+      }
+      this.initialCenterApplied.set(true);
+      if (outcome.point) {
+        map.easeTo({ center: [outcome.point.lon, outcome.point.lat], zoom: USER_LOCATION_ZOOM });
+        return;
+      }
+      this.centerOnFleetOrDefault(map);
+    });
   }
 
   ngAfterViewInit(): void {
     const map = new MapLibreMap({
       container: this.mapContainer().nativeElement,
       style: MAP_STYLE_URL,
-      center: [0, 0],
-      zoom: 2,
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
     });
     this.map = map;
+
+    // Only a real user gesture carries `originalEvent` -- a programmatic
+    // easeTo/flyTo/fitBounds (this component's own centering) never does.
+    map.on('dragstart', (event) => {
+      if (event.originalEvent) {
+        this.userInteracted.set(true);
+      }
+    });
+    map.on('zoomstart', (event) => {
+      if (event.originalEvent) {
+        this.userInteracted.set(true);
+      }
+    });
 
     map.on('load', () => {
       this.registerVehicleIcon(map);
@@ -191,6 +273,29 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     if (isE2eHarness()) {
       delete (window as unknown as { __fleetpulseLiveMap?: MapLibreMap }).__fleetpulseLiveMap;
     }
+  }
+
+  // Geolocation fallback when denied/unavailable/timed out: prefer fitting
+  // the fleet's currently known vehicle positions over the bare DEFAULT_
+  // CENTER/DEFAULT_ZOOM the map was already created with -- if none are
+  // known yet, that default view is simply left as-is (nothing to do here).
+  private centerOnFleetOrDefault(map: MapLibreMap): void {
+    const known = [...this.fleetStore.vehicles().values()].filter(
+      (vehicle): vehicle is VehicleState & { lat: number; lon: number } =>
+        typeof vehicle.lat === 'number' && typeof vehicle.lon === 'number',
+    );
+    if (known.length === 0) {
+      return;
+    }
+    const lats = known.map((vehicle) => vehicle.lat);
+    const lons = known.map((vehicle) => vehicle.lon);
+    map.fitBounds(
+      [
+        [Math.min(...lons), Math.min(...lats)],
+        [Math.max(...lons), Math.max(...lats)],
+      ],
+      { padding: 64, maxZoom: 14 },
+    );
   }
 
   // Task 4.4: the rAF loop itself -- the one piece that genuinely has to
