@@ -10,6 +10,16 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Task 8: Boot 4 modularized Spring Integration autoconfiguration out of
+    // spring-boot-autoconfigure, so declaring spring-integration-mqtt alone
+    // (below) never enabled it -- @ServiceActivator methods were registered
+    // as beans but never as channel subscribers, so every real MQTT message
+    // failed in production with "Dispatcher has no subscribers for channel
+    // 'telemetryInputChannel'" (see ProcessorApplicationContextTest). This
+    // starter is the Boot-idiomatic fix: it brings IntegrationAutoConfiguration,
+    // which registers the MessagingAnnotationPostProcessor for us, the same
+    // way tests were doing manually via @EnableIntegration.
+    implementation("org.springframework.boot:spring-boot-starter-integration")
     // Broker connectivity health indicator (5.1) and the periodic retained
     // heartbeat publish (5.3) both go through Spring Integration's Paho client factory.
     implementation("org.springframework.integration:spring-integration-mqtt")

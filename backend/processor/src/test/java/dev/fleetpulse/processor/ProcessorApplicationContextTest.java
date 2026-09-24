@@ -2,7 +2,11 @@ package dev.fleetpulse.processor;
 
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.integration.channel.AbstractSubscribableChannel;
+import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -13,6 +17,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 // Every other test in this module hand-assembles a narrow
 // AnnotationConfigApplicationContext with only the @Configuration classes it
@@ -51,6 +57,14 @@ class ProcessorApplicationContextTest {
     @Container
     static final GenericContainer<?> mosquitto = SecuredMosquittoTestSupport.newContainer();
 
+    @Autowired
+    @Qualifier("telemetryInputChannel")
+    private MessageChannel telemetryInputChannel;
+
+    @Autowired
+    @Qualifier("presenceInputChannel")
+    private MessageChannel presenceInputChannel;
+
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgis::getJdbcUrl);
@@ -68,5 +82,28 @@ class ProcessorApplicationContextTest {
     void contextLoads() {
         // Intentionally no assertions beyond a successful startup -- see the
         // class-level comment for what this proves that no other test can.
+    }
+
+    // Task 8 regression: production never enabled Spring Integration (no
+    // spring-boot-starter-integration, no @EnableIntegration anywhere in
+    // main code), so the MessagingAnnotationPostProcessor that turns
+    // @ServiceActivator into an actual channel subscriber never ran --
+    // TelemetryMessageListener/PresenceMessageListener were beans, but never
+    // subscribers. Every real MQTT message then failed with
+    // "Dispatcher has no subscribers for channel 'telemetryInputChannel'"
+    // (same for presenceInputChannel), confirmed in production logs. Every
+    // other test in this module either hand-assembles its own
+    // AnnotationConfigApplicationContext with @EnableIntegration declared
+    // directly (masking this), or never boots Spring Integration at all --
+    // only this class boots the real ProcessorApplication, so only here can
+    // a regression to "no subscribers" be caught again.
+    @Test
+    void telemetryAndPresenceChannelsHaveSubscribers() {
+        assertThat(((AbstractSubscribableChannel) telemetryInputChannel).getSubscriberCount())
+            .as("telemetryInputChannel subscribers")
+            .isGreaterThan(0);
+        assertThat(((AbstractSubscribableChannel) presenceInputChannel).getSubscriberCount())
+            .as("presenceInputChannel subscribers")
+            .isGreaterThan(0);
     }
 }
