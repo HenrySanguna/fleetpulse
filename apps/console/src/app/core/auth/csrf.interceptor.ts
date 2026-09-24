@@ -8,6 +8,27 @@ import { CsrfTokenService, type CsrfToken } from './csrf-token.service';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// Compares parsed origins, not string prefixes: `${baseUrl}.evil.com` or
+// `${baseUrl}@evil.com` must never receive the token.
+function apiPath(url: string, baseUrl: string): string | undefined {
+  let target: URL;
+  let base: URL;
+  try {
+    target = new URL(url);
+    base = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+  if (target.origin !== base.origin) {
+    return undefined;
+  }
+  const basePath = base.pathname.replace(/\/$/, '');
+  if (basePath && target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`)) {
+    return undefined;
+  }
+  return target.pathname.slice(basePath.length);
+}
+
 // cross-site-csrf-token: attaches the CSRF header (synchronizer token
 // pattern, SecurityConfig/CsrfTokenController -- header name read from that
 // endpoint's response, never hardcoded) to every unsafe request the console
@@ -22,13 +43,11 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const csrfInterceptor: HttpInterceptorFn = (req, next) => {
   const csrfTokenService = inject(CsrfTokenService);
   const api = inject(DispatcherSessionControllerService);
-  const baseUrl = api.configuration.basePath ?? '';
+  const path = apiPath(req.url, api.configuration.basePath ?? '');
 
-  if (!baseUrl || !req.url.startsWith(baseUrl)) {
+  if (path === undefined) {
     return next(req);
   }
-
-  const path = req.url.slice(baseUrl.length);
 
   if (path === '/login') {
     // The server rotates the session's CSRF token on successful

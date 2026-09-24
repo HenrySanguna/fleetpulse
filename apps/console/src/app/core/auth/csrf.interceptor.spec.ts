@@ -66,6 +66,17 @@ describe('csrfInterceptor', () => {
     request.flush({});
   });
 
+  it.each([`${API_BASE_URL}.evil.com/api/geofences`, `http://localhost:8099@evil.com/api/geofences`])(
+    'does not fetch or attach a token for a look-alike origin %s',
+    (url) => {
+      http.post(url, {}).subscribe();
+
+      const request = httpMock.expectOne(url);
+      expect(request.request.headers.has('X-XSRF-TOKEN')).toBe(false);
+      request.flush({});
+    },
+  );
+
   it('shares one in-flight token fetch between concurrent unsafe requests', () => {
     http.post(`${API_BASE_URL}/api/geofences`, { name: 'A' }).subscribe();
     http.post(`${API_BASE_URL}/api/geofences`, { name: 'B' }).subscribe();
