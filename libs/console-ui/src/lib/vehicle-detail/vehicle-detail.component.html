@@ -1,35 +1,35 @@
 @if (vehicle(); as v) {
   <p-card [header]="v.label ?? v.vehicleId" data-testid="vehicle-detail">
     <dl class="detail-grid">
-      <dt>Vehicle ID</dt>
+      <dt>ID del vehículo</dt>
       <dd class="mono">{{ v.vehicleId }}</dd>
 
-      <dt>Status</dt>
+      <dt>Estado</dt>
       <dd>
-        <p-tag [severity]="v.online ? 'success' : 'danger'" [value]="v.online ? 'Online' : 'Offline'" />
+        <p-tag [severity]="v.online ? 'success' : 'danger'" [value]="v.online ? 'En línea' : 'Fuera de línea'" />
       </dd>
 
-      <dt>Motion state</dt>
-      <dd data-testid="vehicle-detail-motion-state">{{ v.motionState ?? 'Unknown' }}</dd>
+      <dt>Estado de movimiento</dt>
+      <dd data-testid="vehicle-detail-motion-state">{{ motionStateLabel() }}</dd>
 
-      <dt>Reported position</dt>
+      <dt>Posición reportada</dt>
       <dd class="mono" data-testid="vehicle-detail-position">
         @if (v.lat !== undefined && v.lon !== undefined) {
           {{ v.lat | number: '1.5-5' }}, {{ v.lon | number: '1.5-5' }}
         } @else {
-          Unknown
+          Desconocido
         }
       </dd>
 
-      <dt>Speed</dt>
-      <dd>{{ v.speedKmh !== undefined ? (v.speedKmh | number: '1.0-0') + ' km/h' : 'Unknown' }}</dd>
+      <dt>Velocidad</dt>
+      <dd>{{ v.speedKmh !== undefined ? (v.speedKmh | number: '1.0-0') + ' km/h' : 'Desconocido' }}</dd>
 
-      <dt>Heading</dt>
-      <dd>{{ v.heading !== undefined ? (v.heading | number: '1.0-0') + '°' : 'Unknown' }}</dd>
+      <dt>Rumbo</dt>
+      <dd>{{ v.heading !== undefined ? (v.heading | number: '1.0-0') + '°' : 'Desconocido' }}</dd>
 
-      <dt>Last reported at</dt>
+      <dt>Última actualización</dt>
       <dd class="mono" data-testid="vehicle-detail-recorded-at">
-        {{ v.recordedAt ? (v.recordedAt | date: 'dd/MM/yyyy HH:mm:ss') : 'Unknown' }}
+        {{ v.recordedAt ? (v.recordedAt | date: 'dd/MM/yyyy HH:mm:ss') : 'Desconocido' }}
       </dd>
 
       <dt>ETA</dt>
@@ -37,5 +37,5 @@
     </dl>
   </p-card>
 } @else {
-  <p style="color: var(--fp-text-faint)">Select a vehicle to see its details.</p>
+  <p style="color: var(--fp-text-faint)">Selecciona un vehículo para ver sus detalles.</p>
 }

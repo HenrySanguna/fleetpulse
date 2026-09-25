@@ -1,4 +1,4 @@
-<ul class="flex flex-col" role="listbox" aria-label="Vehicles">
+<ul class="flex flex-col" role="listbox" aria-label="Vehículos">
   @for (vehicle of vehicles(); track vehicle.vehicleId) {
     <li>
       <button
@@ -14,12 +14,12 @@
           <span class="vehicle-id mono">{{ vehicle.vehicleId }}</span>
         </span>
         <span class="flex items-center gap-1">
-          <p-tag [severity]="motionSeverity(vehicle)" [value]="vehicle.motionState ?? 'STOPPED'" />
-          <p-tag [severity]="vehicle.online ? 'success' : 'danger'" [value]="vehicle.online ? 'Online' : 'Offline'" />
+          <p-tag [severity]="motionSeverity(vehicle)" [value]="motionStateLabel(vehicle)" />
+          <p-tag [severity]="vehicle.online ? 'success' : 'danger'" [value]="vehicle.online ? 'En línea' : 'Fuera de línea'" />
         </span>
       </button>
     </li>
   } @empty {
-    <li class="px-4 py-2 text-[13.5px]" style="color: var(--fp-text-faint)">No vehicles match the current filters.</li>
+    <li class="px-4 py-2 text-[13.5px]" style="color: var(--fp-text-faint)">Ningún vehículo coincide con los filtros actuales.</li>
   }
 </ul>

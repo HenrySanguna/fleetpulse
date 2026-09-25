@@ -10,8 +10,8 @@
       class="search-input w-full"
       [value]="filters().search"
       (input)="onSearchInput($event)"
-      placeholder="Search by label or vehicle ID"
-      aria-label="Search vehicles"
+      placeholder="Buscar por etiqueta o ID de vehículo"
+      aria-label="Buscar vehículos"
     />
   </div>
 
@@ -21,9 +21,9 @@
     optionValue="value"
     [ngModel]="filters().motionState"
     (ngModelChange)="onMotionStateChange($event)"
-    placeholder="All states"
+    placeholder="Todos los estados"
     class="w-full"
-    aria-label="Filter by motion state"
+    aria-label="Filtrar por estado de movimiento"
   />
 
   <label class="flex items-center gap-2 online-only-label" for="online-only-filter">
@@ -33,6 +33,6 @@
       (ngModelChange)="onOnlineOnlyChange($event)"
       inputId="online-only-filter"
     />
-    <span>Online only</span>
+    <span>Solo en línea</span>
   </label>
 </div>

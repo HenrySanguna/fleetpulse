@@ -59,7 +59,7 @@ describe('LiveMapPageComponent', () => {
     await fixture.whenStable();
 
     const status = fixture.nativeElement.querySelector('console-ui-connection-status');
-    expect(status.textContent).toContain('Disconnected');
+    expect(status.textContent).toContain('Desconectado');
   });
 
   // Task 5.2: list -> store, and the store is the same signal LiveMapComponent

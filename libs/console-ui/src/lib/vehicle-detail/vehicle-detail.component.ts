@@ -17,10 +17,10 @@ import type { VehicleView } from '../models/vehicle-view.model';
 // momentary "still calculating" state from the dispatcher.
 export function formatEtaLabel(vehicle: VehicleView | undefined): string {
   if (!vehicle || vehicle.destinationLat === undefined || vehicle.destinationLon === undefined) {
-    return 'No destination assigned';
+    return 'Sin destino asignado';
   }
   if (vehicle.etaSeconds === undefined || vehicle.etaMarginSeconds === undefined) {
-    return 'Calculating…';
+    return 'Calculando…';
   }
   const minutes = Math.round(vehicle.etaSeconds / 60);
   const marginMinutes = Math.round(vehicle.etaMarginSeconds / 60);
@@ -40,6 +40,12 @@ export function formatEtaLabel(vehicle: VehicleView | undefined): string {
 // (the real, un-interpolated map), never to the map's visual state, which is
 // what makes the separation hold end-to-end, not just at the data layer
 // WU4's own test already proved.
+const MOTION_STATE_LABEL: Record<'MOVING' | 'IDLING' | 'STOPPED', string> = {
+  MOVING: 'En movimiento',
+  IDLING: 'Ralentí',
+  STOPPED: 'Detenido',
+};
+
 @Component({
   selector: 'console-ui-vehicle-detail',
   imports: [Card, Tag, DecimalPipe, DatePipe],
@@ -51,4 +57,8 @@ export class VehicleDetailComponent {
   readonly vehicle = input<VehicleView | undefined>(undefined);
 
   protected readonly etaLabel = computed(() => formatEtaLabel(this.vehicle()));
+  protected readonly motionStateLabel = computed(() => {
+    const motionState = this.vehicle()?.motionState;
+    return motionState ? MOTION_STATE_LABEL[motionState] : 'Desconocido';
+  });
 }

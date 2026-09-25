@@ -14,7 +14,7 @@ describe('VehicleDetailComponent', () => {
     const fixture = render(undefined);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.textContent).toContain('Select a vehicle to see its details.');
+    expect(fixture.nativeElement.textContent).toContain('Selecciona un vehículo para ver sus detalles.');
     expect(fixture.nativeElement.querySelector('[data-testid="vehicle-detail"]')).toBeNull();
   });
 
@@ -40,7 +40,7 @@ describe('VehicleDetailComponent', () => {
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('[data-testid="vehicle-detail-motion-state"]').textContent).toContain(
-      'MOVING',
+      'En movimiento',
     );
   });
 
@@ -71,12 +71,12 @@ describe('VehicleDetailComponent', () => {
     ).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
   });
 
-  it('renders "Unknown" placeholders for a vehicle with no telemetry yet', async () => {
+  it('renders "Desconocido" placeholders for a vehicle with no telemetry yet', async () => {
     const fixture = render({ vehicleId: 'v2', online: false });
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('[data-testid="vehicle-detail-position"]').textContent).toContain(
-      'Unknown',
+      'Desconocido',
     );
   });
 
@@ -117,21 +117,21 @@ describe('VehicleDetailComponent', () => {
     );
   });
 
-  it('renders "Calculating" for an assigned destination whose eta has not been computed yet', async () => {
+  it('renders "Calculando" for an assigned destination whose eta has not been computed yet', async () => {
     const fixture = render({ vehicleId: 'v4', destinationLat: 4.8, destinationLon: -74.1 });
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('[data-testid="vehicle-detail-eta"]').textContent).toContain(
-      'Calculating',
+      'Calculando',
     );
   });
 
-  it('renders "No destination assigned" when the vehicle has no destination', async () => {
+  it('renders "Sin destino asignado" when the vehicle has no destination', async () => {
     const fixture = render({ vehicleId: 'v5' });
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('[data-testid="vehicle-detail-eta"]').textContent).toContain(
-      'No destination assigned',
+      'Sin destino asignado',
     );
   });
 });
@@ -144,7 +144,7 @@ describe('formatEtaLabel', () => {
   });
 
   it('returns undefined-destination placeholder for an undefined vehicle', () => {
-    expect(formatEtaLabel(undefined)).toBe('No destination assigned');
+    expect(formatEtaLabel(undefined)).toBe('Sin destino asignado');
   });
 
   it('shows "< 1 min" for an eta or margin that rounds to zero minutes', () => {

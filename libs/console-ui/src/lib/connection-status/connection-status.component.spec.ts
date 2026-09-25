@@ -15,7 +15,7 @@ describe('ConnectionStatusComponent', () => {
     await fixture.whenStable();
 
     const tag = fixture.nativeElement.querySelector('[data-testid="connection-status"]') as HTMLElement;
-    expect(tag.textContent).toContain('Connected');
+    expect(tag.textContent).toContain('Conectado');
   });
 
   it('renders a danger tag when disconnected', async () => {
@@ -23,16 +23,16 @@ describe('ConnectionStatusComponent', () => {
     await fixture.whenStable();
 
     const tag = fixture.nativeElement.querySelector('[data-testid="connection-status"]') as HTMLElement;
-    expect(tag.textContent).toContain('Disconnected');
+    expect(tag.textContent).toContain('Desconectado');
   });
 
   it('renders a warn tag while (re)connecting', async () => {
     const reconnecting = render('reconnecting');
     await reconnecting.whenStable();
-    expect(reconnecting.nativeElement.textContent).toContain('Reconnecting');
+    expect(reconnecting.nativeElement.textContent).toContain('Reconectando');
 
     const connecting = render('connecting');
     await connecting.whenStable();
-    expect(connecting.nativeElement.textContent).toContain('Connecting');
+    expect(connecting.nativeElement.textContent).toContain('Conectando');
   });
 });

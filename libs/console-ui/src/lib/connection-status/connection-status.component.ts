@@ -5,10 +5,10 @@ import type { ConnectionStatusValue } from '../models/vehicle-view.model';
 type TagSeverity = 'success' | 'warn' | 'danger';
 
 const STATUS_LABEL: Record<ConnectionStatusValue, string> = {
-  connected: 'Connected',
-  connecting: 'Connecting…',
-  reconnecting: 'Reconnecting…',
-  disconnected: 'Disconnected',
+  connected: 'Conectado',
+  connecting: 'Conectando…',
+  reconnecting: 'Reconectando…',
+  disconnected: 'Desconectado',
 };
 
 const STATUS_SEVERITY: Record<ConnectionStatusValue, TagSeverity> = {
