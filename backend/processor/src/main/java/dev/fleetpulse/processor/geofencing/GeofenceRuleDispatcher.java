@@ -73,14 +73,22 @@ import java.util.UUID;
 // to reset it), so every later occurrence falls through to the engine's
 // windowElapsed check alone -- exactly "suppress a repeat within the window,
 // re-arm once it elapses," with no notion of "episode" needed for an event.
-// Persisted the same bulk (load once, chain in Java, write once) shape
-// AlertRuleDispatcher uses, NOT this class's own per-(message, geofence)
-// membership-state round trip above: unlike that read, which needs each
-// message's own within-batch chaining to see the very last dwellAlerted it
-// wrote, this layer's state per key never needs to be re-read mid-batch from
-// the DB (the in-memory map IS the source of truth for the duration of one
-// evaluateAndDispatch call), so a single upfront load and a single trailing
-// write are both correct and reuse JdbcAlertSilenceStateStore as-is.
+// Load-once/chain-in-Java shape AlertRuleDispatcher uses, NOT this class's
+// own per-(message, geofence) membership-state round trip above: unlike
+// that read, which needs each message's own within-batch chaining to see
+// the very last dwellAlerted it wrote, this layer's state per key never
+// needs to be re-read mid-batch from the DB (the in-memory map IS the
+// source of truth for the duration of one evaluateAndDispatch call), so a
+// single upfront bulk load is correct and reuses JdbcAlertSilenceStateStore
+// as-is. The write side, however, is scoped per MESSAGE, not a single
+// trailing write for the whole batch: writeBulk() is called once
+// processMessage finishes a message's own geofences, with only the keys
+// THAT message mutated (see processMessage's own comment). Deferring every
+// message's silence write to the end of the whole batch, like the
+// membership-state/alert writes above never do, would mean a later message
+// in the batch throwing loses the silence record for every earlier
+// message's already-written, already-published alert -- leaving a
+// redelivery/next batch free to re-notify within the window.
 @Component
 public class GeofenceRuleDispatcher {
 
@@ -137,7 +145,6 @@ public class GeofenceRuleDispatcher {
             }
             processMessage(organizationId, message, config, silenceStates);
         }
-        silenceStateStore.writeBulk(silenceStates);
     }
 
     private void processMessage(
@@ -160,6 +167,13 @@ public class GeofenceRuleDispatcher {
 
         Map<UUID, GeofenceRule> rules = geofenceEvaluator.loadRules(relevantGeofenceIds);
 
+        // Keys THIS message actually touched (an alert type in
+        // firedAlerts() for one of its geofences, whether or not the
+        // silence engine went on to suppress it) -- written below instead
+        // of the whole (bulk-loaded, batch-wide) silenceStates map, which
+        // would otherwise re-persist every historical row for every
+        // vehicle in the batch even when this message fired nothing.
+        Map<AlertSilenceKey, AlertSilenceState> mutatedSilenceStates = new HashMap<>();
         for (UUID geofenceId : relevantGeofenceIds) {
             GeofenceRule rule = rules.get(geofenceId);
             if (rule == null) {
@@ -167,9 +181,17 @@ public class GeofenceRuleDispatcher {
                 continue;
             }
             dispatchForGeofence(
-                organizationId, message, config, geofenceId, rule, insideStrict, insideBufferedFromQuery, previousStates, silenceStates
+                organizationId, message, config, geofenceId, rule, insideStrict, insideBufferedFromQuery, previousStates,
+                silenceStates, mutatedSilenceStates
             );
         }
+        // Persisted here, right after this message's own alerts/fence-state
+        // above are already written and published, not deferred to the end
+        // of the whole evaluateAndDispatch loop -- see this class's own
+        // top comment for why deferring it would risk losing an
+        // already-published alert's silence record to a later message's
+        // exception.
+        silenceStateStore.writeBulk(mutatedSilenceStates);
     }
 
     private void dispatchForGeofence(
@@ -181,7 +203,8 @@ public class GeofenceRuleDispatcher {
         Set<UUID> insideStrict,
         Set<UUID> insideBufferedFromQuery,
         Map<UUID, GeofenceMembershipRecord> previousStates,
-        Map<AlertSilenceKey, AlertSilenceState> silenceStates
+        Map<AlertSilenceKey, AlertSilenceState> silenceStates,
+        Map<AlertSilenceKey, AlertSilenceState> mutatedSilenceStates
     ) {
         GeofenceMembershipRecord previous = previousStates.get(geofenceId);
         FenceMembershipState prevState = previous != null
@@ -206,6 +229,7 @@ public class GeofenceRuleDispatcher {
             AlertSilenceDecision decision =
                 AlertSilenceEngine.evaluate(previousSilenceState, true, message.recordedAt(), geofencingProperties.silenceWindow());
             silenceStates.put(silenceKey, decision.nextState());
+            mutatedSilenceStates.put(silenceKey, decision.nextState());
             if (!decision.shouldFire()) {
                 continue;
             }

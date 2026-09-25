@@ -115,7 +115,7 @@ class GeofenceOscillationEndToEndTest {
     private static final double EXIT_BUFFER_METERS = 15.0;
     // T8's own production default: this test's trace produces exactly one
     // confirmed transition, so the silence window never gets a chance to
-    // suppress anything here -- GeofenceOscillationSilenceEndToEndTest is
+    // suppress anything here -- GeofenceAlertSilenceEndToEndTest is
     // the dedicated proof for the silencing behavior itself.
     private static final Duration GEOFENCE_SILENCE_WINDOW = Duration.ofMinutes(10);
 
