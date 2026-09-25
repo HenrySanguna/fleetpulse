@@ -1,12 +1,15 @@
 package dev.fleetpulse.api.reports;
 
+import dev.fleetpulse.api.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.domain.Vehicle;
 import dev.fleetpulse.domain.VehicleRepository;
+import dev.fleetpulse.geocore.MotionConfig;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -22,10 +25,18 @@ public class ActivityReportService {
 
     private final ObjectProvider<VehicleRepository> vehicles;
     private final JdbcActivityReportRepository repository;
+    private final InProgressTripJdbcReader inProgressTripReader;
+    private final MotionConfig motionConfig;
 
-    ActivityReportService(ObjectProvider<VehicleRepository> vehicles, JdbcActivityReportRepository repository) {
+    ActivityReportService(
+            ObjectProvider<VehicleRepository> vehicles,
+            JdbcActivityReportRepository repository,
+            InProgressTripJdbcReader inProgressTripReader,
+            FleetpulseMotionDetectionProperties motionProperties) {
         this.vehicles = vehicles;
         this.repository = repository;
+        this.inProgressTripReader = inProgressTripReader;
+        this.motionConfig = new MotionConfig(motionProperties.stopThresholdKmh(), motionProperties.startThresholdKmh(), motionProperties.minStableDuration());
     }
 
     public ActivityReportResponse report(UUID vehicleId, UUID organizationId, Instant from, Instant to) {
@@ -41,8 +52,37 @@ public class ActivityReportService {
 
         List<JdbcActivityReportRepository.DailyRollupRow> daily = repository.findDaily(organizationId, vehicle.getId(), fromDay, toDay);
         List<ActivityTripResponse> trips = repository.findTrips(organizationId, vehicle.getId(), from, to);
+        ActivityInProgressTripResponse inProgressTrip = computeInProgressTrip(vehicle.getId(), organizationId, from, toDay);
 
-        return new ActivityReportResponse(vehicle.getId(), summarize(daily), dailyDistances(daily), trips);
+        return new ActivityReportResponse(vehicle.getId(), summarize(daily), dailyDistances(daily), trips, inProgressTrip);
+    }
+
+    // Task 10: only when the requested range's own `to` day reaches today
+    // (UTC, same calendar the rest of this report already uses) -- a range
+    // that ends before today had its trailing span resolved long ago, so it
+    // is either already a row in `trips` or genuinely never happened.
+    // Comparing calendar days rather than the raw `to` instant matters in
+    // practice: the console's own "last 7 days" range sends `to = now()`
+    // captured client-side, which is always a little earlier than the
+    // server's own Instant.now() by request time -- an exact instant
+    // comparison would spuriously treat every "today" request as already
+    // past.
+    private ActivityInProgressTripResponse computeInProgressTrip(UUID vehicleId, UUID organizationId, Instant from, LocalDate toDay) {
+        if (toDay.isBefore(LocalDate.now(ZoneOffset.UTC))) {
+            return null;
+        }
+
+        Instant now = Instant.now();
+        Instant lastClosedTripEndedAt = inProgressTripReader.lastClosedTripEndedAt(vehicleId);
+        boolean clippedToWindowStart = from.isAfter(lastClosedTripEndedAt);
+        Instant windowStart = clippedToWindowStart ? from : lastClosedTripEndedAt;
+
+        List<InProgressTripJdbcReader.MotionPositionSample> positions = inProgressTripReader.positionsSince(vehicleId, windowStart, now);
+        Duration stopThreshold = inProgressTripReader.stopThreshold(organizationId);
+
+        return InProgressTripCalculator
+            .calculate(positions, windowStart, clippedToWindowStart, stopThreshold, motionConfig)
+            .orElse(null);
     }
 
     private static ActivityReportSummaryResponse summarize(List<JdbcActivityReportRepository.DailyRollupRow> daily) {

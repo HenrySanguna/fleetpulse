@@ -1,3 +1,4 @@
+export * from './activityInProgressTripResponse';
 export * from './activityReportResponse';
 export * from './activityReportSummaryResponse';
 export * from './activityTripResponse';

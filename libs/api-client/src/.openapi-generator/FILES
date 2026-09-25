@@ -28,6 +28,7 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/activityInProgressTripResponse.ts
 model/activityReportResponse.ts
 model/activityReportSummaryResponse.ts
 model/activityTripResponse.ts

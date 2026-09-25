@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ActivityInProgressTripResponse } from './activityInProgressTripResponse';
 import { DailyDistancePointResponse } from './dailyDistancePointResponse';
 import { ActivityTripResponse } from './activityTripResponse';
 import { ActivityReportSummaryResponse } from './activityReportSummaryResponse';
@@ -17,5 +18,6 @@ export interface ActivityReportResponse {
     summary?: ActivityReportSummaryResponse;
     dailyDistances?: Array<DailyDistancePointResponse>;
     trips?: Array<ActivityTripResponse>;
+    inProgressTrip?: ActivityInProgressTripResponse;
 }
 

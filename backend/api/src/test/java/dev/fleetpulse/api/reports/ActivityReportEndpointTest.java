@@ -26,6 +26,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import dev.fleetpulse.geocore.Geo;
+import dev.fleetpulse.geocore.GeoPoint;
+
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Date;
@@ -33,6 +36,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -190,6 +194,119 @@ class ActivityReportEndpointTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // Task 10: pos1(t=0,40kmh) pos2(t=30,40kmh) -> MOVING confirmed at pos2
+    // (same debounce worked example TripSegmentationEndToEndTest's own
+    // insertMovingThenStoppedTrace() documents), then stays MOVING through
+    // the trace's own last position -- the trip this window would show,
+    // still open, since nothing after the last closed trip has stopped
+    // long enough to close it.
+    @Test
+    void includesTheInProgressTripWhenTheVehicleIsStillMovingAfterTheLastClosedTrip() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-activity-report-in-progress"));
+        users.save(new User(org, "activity-in-progress@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-In-Progress");
+        LocalDate today = LocalDate.now();
+
+        Instant tripEnded = Instant.now().minus(1, ChronoUnit.HOURS);
+        seedTrip(UUID.randomUUID(), org.getId(), vehicleId, tripEnded.minus(30, ChronoUnit.MINUTES), tripEnded, 30.0f, 1800, 60, 70.0f, 60.0f);
+
+        Instant moveStart = tripEnded.plusSeconds(60);
+        seedPosition(vehicleId, moveStart, 4.71, -74.070, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(30), 4.71, -74.069, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(60), 4.71, -74.068, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(90), 4.71, -74.067, 40.0f, false);
+
+        // The real distance a rollup would have measured over these exact
+        // points -- used both as the in-progress trip's own expected
+        // distance and, added to the closed trip's 30km, as the seeded
+        // vehicle_daily row the summary is read from, so the reconciliation
+        // assertion below proves the two figures agree rather than merely
+        // both being non-zero.
+        double inProgressDistanceKm = (
+            Geo.distanceMeters(new GeoPoint(4.71, -74.070, moveStart), new GeoPoint(4.71, -74.069, moveStart.plusSeconds(30)))
+                + Geo.distanceMeters(new GeoPoint(4.71, -74.069, moveStart.plusSeconds(30)), new GeoPoint(4.71, -74.068, moveStart.plusSeconds(60)))
+                + Geo.distanceMeters(new GeoPoint(4.71, -74.068, moveStart.plusSeconds(60)), new GeoPoint(4.71, -74.067, moveStart.plusSeconds(90)))
+        ) / 1000.0;
+        seedDailyRow(org.getId(), vehicleId, today, (float) (30.0 + inProgressDistanceKm), 1800, 60, 70.0f);
+
+        ResponseEntity<ActivityReportResponse> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/activity-report?from=" + today.minusDays(6) + "T00:00:00Z&to=" + Instant.now(),
+            HttpMethod.GET, new HttpEntity<>(sessionHeaders("activity-in-progress@acme.test")), ActivityReportResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        ActivityReportResponse body = response.getBody();
+        assertThat(body.inProgressTrip()).isNotNull();
+        assertThat(body.inProgressTrip().startedAt().truncatedTo(ChronoUnit.MILLIS)).isEqualTo(moveStart.truncatedTo(ChronoUnit.MILLIS));
+        assertThat(body.inProgressTrip().distanceKm()).isCloseTo(inProgressDistanceKm, offset(0.01));
+        assertThat(body.inProgressTrip().maxSpeedKmh()).isEqualTo(40.0);
+        assertThat(body.inProgressTrip().idleMinutes()).isZero();
+        // Reconciliation: the summary's total now equals the closed trip's
+        // distance plus the in-progress trip's own distance -- the two
+        // numbers this task exists to make agree.
+        assertThat(body.summary().totalDistanceKm()).isCloseTo(30.0 + inProgressDistanceKm, offset(0.05));
+    }
+
+    // Task 10: moves briefly, then stops for the organization's default
+    // 300s (5-minute) threshold -- the trip this window would otherwise
+    // show is already effectively closed, so no in-progress trip is
+    // returned; the real TripSegmentationTask will persist it as a
+    // ordinary closed row on its own next run.
+    @Test
+    void omitsTheInProgressTripWhenTheVehicleHasBeenStoppedLongEnough() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-activity-report-stopped"));
+        users.save(new User(org, "activity-stopped@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Stopped");
+        LocalDate today = LocalDate.now();
+        seedDailyRow(org.getId(), vehicleId, today, 10.0f, 1800, 300, 40.0f);
+
+        Instant tripEnded = Instant.now().minus(2, ChronoUnit.HOURS);
+        seedTrip(UUID.randomUUID(), org.getId(), vehicleId, tripEnded.minus(20, ChronoUnit.MINUTES), tripEnded, 15.0f, 1200, 60, 50.0f, 45.0f);
+
+        Instant moveStart = tripEnded.plusSeconds(60);
+        seedPosition(vehicleId, moveStart, 4.71, -74.070, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(30), 4.71, -74.069, 40.0f, false); // MOVING confirmed
+        Instant stopStart = moveStart.plusSeconds(60);
+        seedPosition(vehicleId, stopStart, 4.71, -74.068, 0.0f, false);
+        seedPosition(vehicleId, stopStart.plusSeconds(30), 4.71, -74.068, 0.0f, false); // STOPPED confirmed
+        seedPosition(vehicleId, stopStart.plusSeconds(330), 4.71, -74.068, 0.0f, false); // 300s not-moving run
+
+        ResponseEntity<ActivityReportResponse> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/activity-report?from=" + today.minusDays(6) + "T00:00:00Z&to=" + Instant.now(),
+            HttpMethod.GET, new HttpEntity<>(sessionHeaders("activity-stopped@acme.test")), ActivityReportResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().inProgressTrip()).isNull();
+    }
+
+    // Task 10: the exact same "still moving" data as
+    // includesTheInProgressTripWhenTheVehicleIsStillMovingAfterTheLastClosedTrip()
+    // above, but requested for a range that ends before today -- its
+    // trailing span was already resolved long ago (either closed, or it
+    // genuinely never happened), so no in-progress trip is ever surfaced
+    // for a past range regardless of what the underlying positions show.
+    @Test
+    void omitsTheInProgressTripForARangeThatDoesNotReachToday() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-activity-report-past-range"));
+        users.save(new User(org, "activity-past-range@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Past-Range");
+        LocalDate today = LocalDate.now();
+
+        Instant tripEnded = Instant.now().minus(1, ChronoUnit.HOURS);
+        seedTrip(UUID.randomUUID(), org.getId(), vehicleId, tripEnded.minus(30, ChronoUnit.MINUTES), tripEnded, 30.0f, 1800, 60, 70.0f, 60.0f);
+        Instant moveStart = tripEnded.plusSeconds(60);
+        seedPosition(vehicleId, moveStart, 4.71, -74.070, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(30), 4.71, -74.069, 40.0f, false);
+        seedPosition(vehicleId, moveStart.plusSeconds(60), 4.71, -74.068, 40.0f, false);
+
+        ResponseEntity<ActivityReportResponse> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/activity-report?from=" + today.minusDays(9) + "T00:00:00Z&to="
+                + today.minusDays(2) + "T23:59:59Z",
+            HttpMethod.GET, new HttpEntity<>(sessionHeaders("activity-past-range@acme.test")), ActivityReportResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().inProgressTrip()).isNull();
+    }
+
     @Test
     void rejectsAMalformedFromParameterAsBadRequest() throws SQLException {
         Organization org = organizations.save(new Organization("acme-activity-report-bad-from"));
@@ -287,6 +404,29 @@ class ActivityReportEndpointTest {
             statement.setFloat(9, maxSpeedKmh);
             statement.setFloat(10, avgSpeedKmh);
             statement.setTimestamp(11, Timestamp.from(Instant.now()));
+            statement.executeUpdate();
+        }
+    }
+
+    // Task 10: positions has no JPA entity (PostGIS geography column), so
+    // seeding goes through raw JDBC -- same recipe VehicleTrackEndpointTest/
+    // TripSegmentationEndToEndTest already established, with speed_kmh/
+    // ignition added since InProgressTripCalculator needs both to replay
+    // MotionState.
+    private static void seedPosition(
+            UUID vehicleId, Instant recordedAt, double lat, double lon, float speedKmh, boolean ignition) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO positions (vehicle_id, recorded_at, location, speed_kmh, ignition) "
+                    + "VALUES (?, ?, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?, ?)")
+        ) {
+            statement.setObject(1, vehicleId);
+            statement.setTimestamp(2, Timestamp.from(recordedAt));
+            statement.setDouble(3, lon);
+            statement.setDouble(4, lat);
+            statement.setFloat(5, speedKmh);
+            statement.setBoolean(6, ignition);
             statement.executeUpdate();
         }
     }
