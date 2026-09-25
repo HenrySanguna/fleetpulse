@@ -2,3 +2,27 @@
 # fleetpulse.mqtt.broker-url must come from environment variables
 # (SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD,
 # FLEETPULSE_MQTT_BROKERURL). Startup fails fast if any of them is missing.
+
+# F8: this profile is the only one ever fronted by docker/caddy/Caddyfile
+# (docker-compose.prod.yml sets SPRING_PROFILES_ACTIVE=prod; the plain
+# docker-compose.yml used for local/dev has no reverse proxy at all), so
+# honoring forwarded headers only here keeps dev/test requests (talking to
+# the app directly, over plain HTTP) from having their scheme silently
+# overridden by a client-supplied header nothing is actually proxying.
+#
+# native, not framework: docker/caddy/Caddyfile's `reverse_proxy api:8080`
+# passes through whatever Forwarded/X-Forwarded-* headers the client sent
+# it, it never strips or overwrites them. framework's ForwardedHeaderFilter
+# trusts those headers (RFC 7239 Forwarded, X-Forwarded-Prefix/Host/Port/
+# Proto) from any request that reaches it, with no notion of who the direct
+# connection peer is -- since api itself has no published port
+# (docker-compose.prod.yml, only caddy publishes 80/443), that trust would
+# extend to anyone able to reach api, not only caddy. native instead relies
+# on the servlet container's own support (Tomcat's RemoteIpValve), which
+# only honors X-Forwarded-For/Proto (not the other headers above) and only
+# from requests whose remote address matches its internalProxies pattern --
+# Docker's default bridge network addresses (172.16-31.0.0/12) match that
+# pattern out of the box, so caddy is still trusted, but a request that
+# somehow reached api directly from outside that network would not be.
+server:
+  forward-headers-strategy: native
