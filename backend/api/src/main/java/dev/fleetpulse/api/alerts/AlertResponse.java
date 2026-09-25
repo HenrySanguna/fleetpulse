@@ -15,6 +15,15 @@ import java.util.UUID;
 // alertType is the lowercase wire value (see AlertType's own class comment
 // for why), not the Java enum -- the console maps it 1:1 onto its own
 // AlertType union with no case translation needed.
+//
+// Task T9 (prod QA, ack audit): acknowledgedAt/acknowledgedBy are the V14
+// audit columns. acknowledgedBy is the acknowledging dispatcher's email
+// (LEFT JOINed from `users`, same soft-reference-survives-deletion reasoning
+// as contextLabel above), not the raw acknowledged_by UUID -- the console
+// renders it directly, so a human-readable identity belongs in the DTO
+// rather than making the client resolve an internal id. Both are null for a
+// row that is not (yet) acknowledged, and stay null forever for a
+// pre-V14 row this migration could not retroactively attribute.
 public record AlertResponse(
     UUID id,
     UUID vehicleId,
@@ -23,6 +32,8 @@ public record AlertResponse(
     UUID context,
     String contextLabel,
     Instant occurredAt,
-    boolean acknowledged
+    boolean acknowledged,
+    Instant acknowledgedAt,
+    String acknowledgedBy
 ) {
 }

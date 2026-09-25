@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,17 +26,24 @@ public class AlertsService {
         return repository.findFiltered(organizationId, filter);
     }
 
-    // PATCH .../acknowledge is idempotent by construction: acknowledge()'s
-    // UPDATE has no WHERE acknowledged = false guard, so calling it twice on
-    // an already-attended alert is a harmless no-op that still returns 200
-    // with the same acknowledged=true row, matching ordinary PATCH semantics
-    // (unlike VehicleDestinationService.clear()'s DELETE no-op, this mutation
-    // always has a real row to report back).
-    public AlertResponse acknowledge(UUID id, UUID organizationId) {
-        boolean updated = repository.acknowledge(id, organizationId);
-        if (!updated) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    // PATCH .../acknowledge is idempotent by construction: an already-
+    // acknowledged alert is returned as-is (its original acknowledgedAt/
+    // acknowledgedBy preserved), a harmless no-op that still returns 200,
+    // matching ordinary PATCH semantics (unlike VehicleDestinationService
+    // .clear()'s DELETE no-op, this mutation always has a real row to report
+    // back). T9 (prod QA): who/when is only ever set on the FIRST
+    // acknowledgement -- a later call, even by a different dispatcher, must
+    // never overwrite it, so this checks `acknowledged` here before writing
+    // rather than trusting the UPDATE's own row count alone (0 rows updated
+    // is otherwise ambiguous between "already acknowledged" and "no such
+    // alert in this organization").
+    public AlertResponse acknowledge(UUID id, UUID organizationId, UUID dispatcherId) {
+        AlertResponse existing = repository.findById(id, organizationId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (existing.acknowledged()) {
+            return existing;
         }
+        repository.acknowledge(id, organizationId, dispatcherId, Instant.now());
         return repository.findById(id, organizationId)
             .orElseThrow(() -> new IllegalStateException("Alert not found immediately after acknowledge: " + id));
     }

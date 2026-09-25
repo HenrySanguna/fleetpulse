@@ -151,7 +151,7 @@ class AlertsEndpointTest {
     }
 
     @Test
-    void marksAnAlertAsAcknowledgedIdempotently() throws SQLException {
+    void marksAnAlertAsAcknowledgedIdempotentlyRecordingWhoAndWhen() throws SQLException {
         Organization org = organizations.save(new Organization("acme-alerts-ack"));
         users.save(new User(org, "alerts-ack@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
         UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Ack");
@@ -164,11 +164,71 @@ class AlertsEndpointTest {
             baseUrl() + "/api/alerts/" + alertId + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(mutation), AlertResponse.class);
         assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(first.getBody().acknowledged()).isTrue();
+        assertThat(first.getBody().acknowledgedBy()).isEqualTo("alerts-ack@acme.test");
+        Instant firstAcknowledgedAt = first.getBody().acknowledgedAt();
+        assertThat(firstAcknowledgedAt).isNotNull();
 
         ResponseEntity<AlertResponse> second = restTemplate.exchange(
             baseUrl() + "/api/alerts/" + alertId + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(mutation), AlertResponse.class);
         assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(second.getBody().acknowledged()).isTrue();
+        assertThat(second.getBody().acknowledgedBy()).isEqualTo("alerts-ack@acme.test");
+        assertThat(second.getBody().acknowledgedAt()).isEqualTo(firstAcknowledgedAt);
+    }
+
+    // T9 (prod QA): the audit trail records only the FIRST acknowledgement --
+    // a second dispatcher acknowledging the same (already-attended) alert
+    // must never overwrite who/when, matching AlertsService.acknowledge()'s
+    // own "already acknowledged? skip the write" guard.
+    @Test
+    void secondAcknowledgeByADifferentDispatcherKeepsTheOriginalAuditValues() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-ack-audit"));
+        users.save(new User(org, "alerts-ack-audit-1@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        users.save(new User(org, "alerts-ack-audit-2@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Ack-Audit");
+        UUID alertId = UUID.randomUUID();
+        seedAlert(alertId, org.getId(), vehicleId, "speeding", null, Instant.now());
+
+        HttpHeaders firstMutation = DispatcherLoginTestSupport.mutationHeadersFrom(
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-ack-audit-1@acme.test", "s3cret-pass"));
+        ResponseEntity<AlertResponse> first = restTemplate.exchange(
+            baseUrl() + "/api/alerts/" + alertId + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(firstMutation), AlertResponse.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(first.getBody().acknowledgedBy()).isEqualTo("alerts-ack-audit-1@acme.test");
+        Instant firstAcknowledgedAt = first.getBody().acknowledgedAt();
+        assertThat(firstAcknowledgedAt).isNotNull();
+
+        HttpHeaders secondMutation = DispatcherLoginTestSupport.mutationHeadersFrom(
+            restTemplate, baseUrl(), DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "alerts-ack-audit-2@acme.test", "s3cret-pass"));
+        ResponseEntity<AlertResponse> second = restTemplate.exchange(
+            baseUrl() + "/api/alerts/" + alertId + "/acknowledge", HttpMethod.PATCH, new HttpEntity<>(secondMutation), AlertResponse.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(second.getBody().acknowledgedBy()).isEqualTo("alerts-ack-audit-1@acme.test");
+        assertThat(second.getBody().acknowledgedAt()).isEqualTo(firstAcknowledgedAt);
+    }
+
+    // Proves the response mapping (findFiltered()'s own toResponse(), not
+    // just acknowledge()'s) joins acknowledgedBy from `users` -- a row
+    // acknowledged directly at the DB layer (this module's only write path
+    // into `alerts` besides the endpoint itself is the processor) still
+    // renders a human-readable email through GET /api/alerts.
+    @Test
+    void listIncludesAcknowledgedAtAndAcknowledgedByJoinedFromTheAcknowledgingDispatcher() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-ack-list"));
+        User dispatcher = users.save(new User(org, "alerts-ack-list@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Ack-List");
+        UUID alertId = UUID.randomUUID();
+        seedAlert(alertId, org.getId(), vehicleId, "speeding", null, Instant.now());
+        Instant acknowledgedAt = Instant.now();
+        acknowledgeDirectlyWithAudit(alertId, dispatcher.getId(), acknowledgedAt);
+
+        ResponseEntity<AlertResponse[]> listed = restTemplate.exchange(
+            baseUrl() + "/api/alerts", HttpMethod.GET, new HttpEntity<>(sessionHeaders("alerts-ack-list@acme.test")), AlertResponse[].class);
+
+        assertThat(listed.getBody()).hasSize(1);
+        assertThat(listed.getBody()[0].acknowledged()).isTrue();
+        assertThat(listed.getBody()[0].acknowledgedBy()).isEqualTo("alerts-ack-list@acme.test");
+        assertThat(listed.getBody()[0].acknowledgedAt()).isNotNull();
     }
 
     @Test
@@ -259,6 +319,19 @@ class AlertsEndpointTest {
             PreparedStatement statement = connection.prepareStatement("UPDATE alerts SET acknowledged = true WHERE id = ?")
         ) {
             statement.setObject(1, id);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void acknowledgeDirectlyWithAudit(UUID id, UUID dispatcherId, Instant acknowledgedAt) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement(
+                "UPDATE alerts SET acknowledged = true, acknowledged_at = ?, acknowledged_by = ? WHERE id = ?")
+        ) {
+            statement.setTimestamp(1, Timestamp.from(acknowledgedAt));
+            statement.setObject(2, dispatcherId);
+            statement.setObject(3, id);
             statement.executeUpdate();
         }
     }
