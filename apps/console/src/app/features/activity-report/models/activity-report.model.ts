@@ -51,9 +51,25 @@ export interface ActivityTripRow {
   readonly maxSpeedKmh: number;
 }
 
+// Task 10 (prod QA: "el informe de actividad muestra el viaje en curso"):
+// the still-open trip TripSegmenter (backend) never persists as a row in
+// `trips` -- backend: ActivityInProgressTripResponse, computed display-only
+// from positions. No `id` (nothing persisted) and no `endedAt` (it has not
+// ended -- the page renders "ahora"/"En curso" instead), otherwise the same
+// shape as ActivityTripRow so the page's own trip-row formatters can be
+// reused for both.
+export interface ActivityInProgressTrip {
+  readonly startedAt: string;
+  readonly distanceKm: number;
+  readonly durationMinutes: number;
+  readonly idleMinutes: number;
+  readonly maxSpeedKmh: number;
+}
+
 export interface ActivityReport {
   readonly vehicleId: string;
   readonly summary: ActivityReportSummary;
   readonly dailyDistances: readonly DailyDistancePoint[];
   readonly trips: readonly ActivityTripRow[];
+  readonly inProgressTrip?: ActivityInProgressTrip;
 }

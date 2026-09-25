@@ -53,6 +53,8 @@ const REPORTS: Record<string, ActivityReport> = {
         maxSpeedKmh: 58,
       },
     ],
+    // Task 10: this vehicle is currently in an unclosed trip.
+    inProgressTrip: { startedAt: '2026-09-14T09:55:00Z', distanceKm: 5.4, durationMinutes: 12, idleMinutes: 0, maxSpeedKmh: 62 },
   },
 };
 
@@ -124,6 +126,56 @@ describe('ActivityReportPageComponent', () => {
     const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="activity-trip-row"]');
     const cells = row.querySelectorAll('td');
     expect(cells[6].textContent?.trim()).toBe('95 km/h');
+  });
+
+  // Task 10: VH-1042's fixture has no inProgressTrip -- no extra row, no
+  // "En curso" tag, and the closed-trip rows still show their real endedAt.
+  it('renders no in-progress row when the report has none', () => {
+    const fixture = createFixture();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="activity-trip-row-in-progress"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('En curso');
+  });
+
+  // Task 10: VH-0892's fixture has an open trip -- it renders as its own
+  // row, tagged "En curso", with "ahora" instead of a real end time, ABOVE
+  // the closed-trip rows (so switching vehicles must first render 0 closed
+  // trips + 1 in-progress row -- this exercises the @if-before-@for order).
+  it('renders the in-progress trip as its own row, tagged "En curso", above the closed trips', () => {
+    const fixture = createFixture();
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('[data-testid="activity-vehicle-select"]');
+    select.value = 'VH-0892';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const rows: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(2);
+    const inProgressRow = rows[0];
+    expect(inProgressRow.getAttribute('data-testid')).toBe('activity-trip-row-in-progress');
+    const cells = inProgressRow.querySelectorAll('td');
+    expect(cells[1].textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(cells[2].textContent).toContain('ahora');
+    expect(cells[2].textContent).toContain('En curso');
+    expect(cells[3].textContent?.trim()).toBe('5.4 km');
+    expect(cells[4].textContent?.trim()).toBe('0h 12m');
+    expect(cells[5].textContent?.trim()).toBe('0h 00m');
+    expect(cells[6].textContent?.trim()).toBe('62 km/h');
+  });
+
+  // Task 10: the "no hay viajes" empty-state message must not appear while
+  // an in-progress trip is the only row being shown.
+  it('does not show the empty-trips message when only an in-progress trip exists', () => {
+    const emptyReport: ActivityReport = {
+      vehicleId: 'VH-0892',
+      summary: { totalDistanceKm: 5.4, movingMinutes: 12, idleMinutes: 0, avgSpeedKmh: 27, maxSpeedKmh: 62 },
+      dailyDistances: [],
+      trips: [],
+      inProgressTrip: { startedAt: '2026-09-14T09:55:00Z', distanceKm: 5.4, durationMinutes: 12, idleMinutes: 0, maxSpeedKmh: 62 },
+    };
+    activityReportService.getReport.mockReturnValue(of(emptyReport));
+    const fixture = createFixture();
+
+    expect(fixture.nativeElement.textContent).not.toContain('No hay viajes registrados');
   });
 
   it('gives the vehicle selector an accessible name', () => {
