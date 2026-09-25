@@ -39,6 +39,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -205,7 +206,7 @@ class ActivityReportEndpointTest {
         Organization org = organizations.save(new Organization("acme-activity-report-in-progress"));
         users.save(new User(org, "activity-in-progress@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
         UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-In-Progress");
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
         Instant tripEnded = Instant.now().minus(1, ChronoUnit.HOURS);
         seedTrip(UUID.randomUUID(), org.getId(), vehicleId, tripEnded.minus(30, ChronoUnit.MINUTES), tripEnded, 30.0f, 1800, 60, 70.0f, 60.0f);
@@ -256,7 +257,7 @@ class ActivityReportEndpointTest {
         Organization org = organizations.save(new Organization("acme-activity-report-stopped"));
         users.save(new User(org, "activity-stopped@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
         UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Stopped");
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         seedDailyRow(org.getId(), vehicleId, today, 10.0f, 1800, 300, 40.0f);
 
         Instant tripEnded = Instant.now().minus(2, ChronoUnit.HOURS);
@@ -289,7 +290,7 @@ class ActivityReportEndpointTest {
         Organization org = organizations.save(new Organization("acme-activity-report-past-range"));
         users.save(new User(org, "activity-past-range@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
         UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Past-Range");
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
         Instant tripEnded = Instant.now().minus(1, ChronoUnit.HOURS);
         seedTrip(UUID.randomUUID(), org.getId(), vehicleId, tripEnded.minus(30, ChronoUnit.MINUTES), tripEnded, 30.0f, 1800, 60, 70.0f, 60.0f);
