@@ -110,6 +110,38 @@ class DispatcherSessionAuthenticationTest {
         assertThat(setCookie).containsIgnoringCase("SameSite=None");
     }
 
+    // F8: production logout over HTTPS redirected the browser to an http://
+    // URL (Spring Security's default logout success handler is a redirect,
+    // built from request.getScheme(), which Spring never sees as "https"
+    // behind Caddy without server.forward-headers-strategy) and got blocked
+    // as mixed content. SecurityConfig now answers with a plain 200 instead
+    // of any redirect -- asserted here by the absence of a Location header,
+    // not just the status code, since a 3xx with no Location would still
+    // pass a status-only check.
+    @Test
+    void answersLogoutWithAPlainStatusAndNoRedirectAndEndsTheSession() {
+        seedDispatcher("acme-logout", "dana@acme.test", "s3cret-pass", UserRole.DISPATCHER);
+
+        ResponseEntity<String> loginResponse = DispatcherLoginTestSupport
+            .login(restTemplate, baseUrl(), "dana@acme.test", "s3cret-pass");
+        HttpHeaders logoutHeaders = DispatcherLoginTestSupport
+            .mutationHeadersFrom(restTemplate, baseUrl(), loginResponse);
+
+        ResponseEntity<String> logoutResponse = restTemplate.exchange(
+            baseUrl() + "/logout", HttpMethod.POST, new HttpEntity<>(logoutHeaders), String.class);
+
+        assertThat(logoutResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(logoutResponse.getHeaders().getLocation()).isNull();
+
+        // The session the logout call authenticated with must no longer
+        // work -- confirms invalidateHttpSession's default did fire, not
+        // just that the response looked right.
+        ResponseEntity<String> afterLogout = restTemplate.exchange(
+            baseUrl() + "/api/dispatchers/me", HttpMethod.GET,
+            new HttpEntity<>(DispatcherLoginTestSupport.sessionHeadersFrom(loginResponse)), String.class);
+        assertThat(afterLogout.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     @Test
     void rejectsLoginWithAnIncorrectPassword() {
         seedDispatcher("acme-badpass", "bea@acme.test", "s3cret-pass", UserRole.DISPATCHER);

@@ -2,3 +2,12 @@
 # fleetpulse.mqtt.broker-url must come from environment variables
 # (SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD,
 # FLEETPULSE_MQTT_BROKERURL). Startup fails fast if any of them is missing.
+
+# F8: this profile is the only one ever fronted by docker/caddy/Caddyfile
+# (docker-compose.prod.yml sets SPRING_PROFILES_ACTIVE=prod; the plain
+# docker-compose.yml used for local/dev has no reverse proxy at all), so
+# honoring forwarded headers only here keeps dev/test requests (talking to
+# the app directly, over plain HTTP) from having their scheme silently
+# overridden by a client-supplied header nothing is actually proxying.
+server:
+  forward-headers-strategy: framework
