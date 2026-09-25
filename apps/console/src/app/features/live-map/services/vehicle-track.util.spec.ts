@@ -39,14 +39,36 @@ describe('splitTrackIntoSegments', () => {
     expect(splitTrackIntoSegments(points)).toEqual([[points[0]], [points[1]]]);
   });
 
-  // Decided scope: implausible jump = time gap > 5 min, even with no distance.
-  it('splits into a new segment when the time gap exceeds 5 minutes, regardless of distance', () => {
+  // Review R3-001: the backend simplifies the track, so a long gap at a
+  // plausible speed is real driving and must stay connected.
+  it('keeps a long time gap at a plausible speed in one segment (simplified track)', () => {
     const points: TrackPointResponse[] = [
-      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
-      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:06:00Z' },
+      { lat: 0, lon: 0, recordedAt: '2026-01-01T00:00:00Z' },
+      // ~11 km in 10 min -> ~67 km/h.
+      { lat: 0.1, lon: 0, recordedAt: '2026-01-01T00:10:00Z' },
     ];
 
-    expect(splitTrackIntoSegments(points)).toEqual([[points[0]], [points[1]]]);
+    expect(splitTrackIntoSegments(points)).toEqual([points]);
+  });
+
+  it('never splits a stationary vehicle, however long the gap', () => {
+    const points: TrackPointResponse[] = [
+      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
+      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:30:00Z' },
+    ];
+
+    expect(splitTrackIntoSegments(points)).toEqual([points]);
+  });
+
+  // Review R3-002: GPS jitter between fixes sharing a timestamp.
+  it('tolerates sub-50 m jitter between points sharing a timestamp', () => {
+    const points: TrackPointResponse[] = [
+      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
+      // ~11 m north.
+      { lat: 10.0001, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
+    ];
+
+    expect(splitTrackIntoSegments(points)).toEqual([points]);
   });
 
   it('splits on a simulator teleport sharing the previous timestamp (zero elapsed time, real movement)', () => {
@@ -71,7 +93,7 @@ describe('splitTrackIntoSegments', () => {
     const points: TrackPointResponse[] = [
       { lat: 10, lon: 20, recordedAt: '2026-01-01T00:00:00Z' },
       { lat: undefined, lon: undefined, recordedAt: '2026-01-01T00:00:05Z' },
-      { lat: 10, lon: 20, recordedAt: '2026-01-01T00:10:00Z' },
+      { lat: 10, lon: 21, recordedAt: '2026-01-01T00:00:10Z' },
     ];
 
     expect(splitTrackIntoSegments(points)).toEqual([[points[0]], [points[2]]]);
@@ -110,7 +132,7 @@ describe('toTrackSegmentFeatures', () => {
     const points: TrackPointResponse[] = [
       { lat: 0, lon: 0, recordedAt: '2026-01-01T00:00:00Z' },
       { lat: 0.001, lon: 0, recordedAt: '2026-01-01T00:00:10Z' },
-      // > 5 min gap -> new segment, but it is the only point in it (dropped).
+      // Implausible speed -> new segment.
       { lat: 50, lon: 50, recordedAt: '2026-01-01T01:00:00Z' },
       { lat: 50.001, lon: 50, recordedAt: '2026-01-01T01:00:10Z' },
     ];

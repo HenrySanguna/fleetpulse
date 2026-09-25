@@ -7,14 +7,14 @@ type ValidTrackPoint = TrackPointResponse & { lat: number; lon: number };
 
 const EARTH_RADIUS_KM = 6371;
 
-// Prod QA (2026-09-24): a straight line drawn across a simulator teleport or
-// a GPS gap read as a real, physically travelled path. These two thresholds
-// are the "implausible jump" test -- either one on its own is enough to
-// start a new segment, so a single stale/duplicate timestamp with real
-// movement (see the `<= 0` branch in `isImplausibleJump`) is caught by the
-// speed check even when the gap check alone would not fire.
+// Prod QA (2026-09-24): a straight line drawn across a simulator teleport
+// read as a real, physically travelled path. The jump test is implied speed
+// only: the backend simplifies the track (Geo.simplifyTrack), so consecutive
+// points minutes apart at a plausible speed are real driving, not a gap.
+// Movements within the jitter tolerance never split, so GPS noise between
+// fixes sharing a timestamp does not shatter the line.
 export const TRACK_MAX_SPEED_KMH = 250;
-export const TRACK_MAX_GAP_MINUTES = 5;
+export const TRACK_JITTER_TOLERANCE_KM = 0.05;
 
 // Pure split, deliberately returned before any GeoJSON shaping so the
 // "where does a jump happen" decision is unit-testable on its own, same as
@@ -78,14 +78,14 @@ function isImplausibleJump(a: ValidTrackPoint, b: ValidTrackPoint): boolean {
     // points rather than fabricating data.
     return false;
   }
-  if (gapMinutes > TRACK_MAX_GAP_MINUTES) {
-    return true;
-  }
   const distanceKm = haversineDistanceKm(a, b);
+  if (distanceKm <= TRACK_JITTER_TOLERANCE_KM) {
+    return false;
+  }
   if (gapMinutes <= 0) {
-    // Duplicate or reversed timestamp: any real movement is an
-    // undefined/infinite speed, an implausible jump by definition.
-    return distanceKm > 0;
+    // Duplicate or reversed timestamp with real movement: undefined or
+    // infinite speed, an implausible jump by definition.
+    return true;
   }
   return distanceKm / (gapMinutes / 60) > TRACK_MAX_SPEED_KMH;
 }

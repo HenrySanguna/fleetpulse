@@ -101,7 +101,7 @@ describe('VehicleTrackService', () => {
     httpMock.expectOne((req) => req.url === 'http://localhost:8099/api/vehicles/v1/track').flush([
       { lat: 0, lon: 0, recordedAt: '2026-01-01T11:00:00Z' },
       { lat: 0.001, lon: 0, recordedAt: '2026-01-01T11:00:10Z' },
-      // > 5 min gap from the previous point -- an implausible jump.
+      // ~7000 km in 30 min -- an implausible speed jump.
       { lat: 50, lon: 50, recordedAt: '2026-01-01T11:30:00Z' },
       { lat: 50.001, lon: 50, recordedAt: '2026-01-01T11:30:10Z' },
     ]);
