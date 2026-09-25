@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, type OnInit, computed, inject } from '@angular/core';
 import type { Alert, AlertTypeFilter } from '../models/alert.model';
 import { AlertsStore } from '../services/alerts.store';
@@ -82,7 +83,7 @@ function groupByDay(alerts: readonly Alert[]): AlertDayGroup[] {
 
 @Component({
   selector: 'app-alerts-page',
-  imports: [],
+  imports: [DatePipe],
   templateUrl: './alerts-page.component.html',
   styleUrl: './alerts-page.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

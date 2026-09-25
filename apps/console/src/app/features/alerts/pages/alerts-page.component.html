@@ -103,7 +103,13 @@
             <div class="alert-detail">{{ alert.detail }}</div>
           </div>
           @if (alert.acknowledged) {
-            <span class="tag tag-ack">Atendida</span>
+            <span class="tag tag-ack">
+              @if (alert.acknowledgedBy && alert.acknowledgedAt) {
+                Atendida por {{ alert.acknowledgedBy }} &middot; {{ alert.acknowledgedAt | date: 'dd/MM/yyyy HH:mm' }}
+              } @else {
+                Atendida
+              }
+            </span>
           } @else {
             <span class="tag tag-new">Nueva</span>
             <button

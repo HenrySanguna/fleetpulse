@@ -59,6 +59,11 @@ function toAlert(response: AlertResponse): Alert {
     detail: DETAIL_BY_TYPE[type](response.contextLabel ?? null),
     occurredAt: required(response.occurredAt, 'occurredAt'),
     acknowledged: required(response.acknowledged, 'acknowledged'),
+    // Same "absent means genuinely null" reasoning as contextLabel above --
+    // both are null until (and unless) an alert is acknowledged, not a
+    // malformed-response case worth failing on like the required() fields.
+    acknowledgedAt: response.acknowledgedAt ?? null,
+    acknowledgedBy: response.acknowledgedBy ?? null,
   };
 }
 
