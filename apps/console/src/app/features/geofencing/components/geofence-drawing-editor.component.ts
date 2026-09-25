@@ -146,6 +146,7 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
     { initialValue: PENDING_GEOLOCATION },
   );
   private readonly initialCenterApplied = signal(false);
+  private lastFittedGeofenceKey: string | GeofenceResponse | undefined;
 
   constructor() {
     effect(() => {
@@ -178,18 +179,26 @@ export class GeofenceDrawingEditorComponent implements AfterViewInit, OnDestroy 
     // drawing a new shape (`mode() !== 'idle'`); selecting a different
     // geofence from the list already resets that in-progress drawing via the
     // resetToken effect above, so this effect naturally re-fires once mode
-    // settles back to idle.
+    // settles back to idle. Fits once per selected geofence id: a later
+    // return to idle or a new object reference for the same geofence (store
+    // reload after save) must not override the user's own pan/zoom.
     effect(() => {
       const geofence = this.selectedGeofence();
       const map = this.map;
       const styleLoaded = this.styleLoaded();
       const mode = this.mode();
-      if (!geofence || !map || !styleLoaded || mode !== 'idle') {
+      if (!geofence) {
+        this.lastFittedGeofenceKey = undefined;
+        return;
+      }
+      const key = geofence.id ?? geofence;
+      if (!map || !styleLoaded || mode !== 'idle' || key === this.lastFittedGeofenceKey) {
         return;
       }
       const bounds = geofenceBounds(geofence);
       if (bounds) {
         map.fitBounds(bounds, { padding: 64, maxZoom: 16 });
+        this.lastFittedGeofenceKey = key;
       }
     });
 

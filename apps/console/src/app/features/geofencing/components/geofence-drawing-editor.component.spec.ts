@@ -332,6 +332,54 @@ describe('GeofenceDrawingEditorComponent', () => {
 
       expect(map.fitBoundsCalls.length).toBe(0);
     });
+
+    it('fits once drawing is cancelled when the selection arrived mid-drawing', async () => {
+      const { fixture, map } = await createAndLoad();
+      clickButton(fixture, 'draw-polygon');
+      await fixture.whenStable();
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      clickButton(fixture, 'cancel-drawing');
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+    });
+
+    it('does not refit the same geofence after a drawing is cancelled', async () => {
+      const { fixture, map } = await createAndLoad();
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      clickButton(fixture, 'draw-polygon');
+      await fixture.whenStable();
+      clickButton(fixture, 'cancel-drawing');
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+    });
+
+    it('does not refit when the same geofence arrives as a new object reference', async () => {
+      const { fixture, map } = await createAndLoad();
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      fixture.componentRef.setInput('selectedGeofence', { ...geofence });
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(1);
+    });
+
+    it('fits again when a different geofence is selected', async () => {
+      const { fixture, map } = await createAndLoad();
+      fixture.componentRef.setInput('selectedGeofence', geofence);
+      await fixture.whenStable();
+
+      fixture.componentRef.setInput('selectedGeofence', { ...geofence, id: 'g2' });
+      await fixture.whenStable();
+
+      expect(map.fitBoundsCalls.length).toBe(2);
+    });
   });
 
   // User decision (2026-09-24): geolocation centering, same convention as
