@@ -104,6 +104,6 @@ describe('LiveMapPageComponent', () => {
 
     expect(store.visibleVehicles().some((v) => v.vehicleId === 'v1')).toBe(false);
     const detail = fixture.nativeElement.querySelector('[data-testid="vehicle-detail-position"]');
-    expect(detail.textContent).toContain('5, 6');
+    expect(detail.textContent).toContain('5.00000, 6.00000');
   });
 });

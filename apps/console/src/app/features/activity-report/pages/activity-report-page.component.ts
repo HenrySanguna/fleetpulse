@@ -94,6 +94,15 @@ function formatShortTime(iso: string): string {
   return `${hours}:${minutes}`;
 }
 
+// Prod QA fix: the backend's average speed is a genuine float (e.g.
+// 44.36987553618879, an average over many samples) -- max speed usually
+// arrives as a whole number but is rounded the same way for consistency,
+// same "format at the presentation layer" split every other formatter here
+// already follows.
+function formatSpeedKmh(speedKmh: number): string {
+  return `${Math.round(speedKmh)}`;
+}
+
 @Component({
   selector: 'app-activity-report-page',
   imports: [],
@@ -134,7 +143,7 @@ export class ActivityReportPageComponent implements OnInit {
 
   protected readonly speedLabel = computed(() => {
     const summary = this.store.summary();
-    return summary ? `${summary.avgSpeedKmh} / ${summary.maxSpeedKmh}` : '--';
+    return summary ? `${formatSpeedKmh(summary.avgSpeedKmh)} / ${formatSpeedKmh(summary.maxSpeedKmh)}` : '--';
   });
 
   ngOnInit(): void {
@@ -168,5 +177,9 @@ export class ActivityReportPageComponent implements OnInit {
 
   protected formatTripEnd(trip: ActivityTripRow): string {
     return formatShortTime(trip.endedAt);
+  }
+
+  protected formatTripMaxSpeed(trip: ActivityTripRow): string {
+    return `${formatSpeedKmh(trip.maxSpeedKmh)} km/h`;
   }
 }
