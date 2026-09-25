@@ -17,6 +17,8 @@ describe('AlertsStore', () => {
       detail: 'Entró en la geocerca "Puerto de Valencia"',
       occurredAt: '2026-01-01T10:42:00.000Z',
       acknowledged: false,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
     },
     {
       id: 'a2',
@@ -26,6 +28,8 @@ describe('AlertsStore', () => {
       detail: '92 km/h en una zona con límite de 60 km/h',
       occurredAt: '2026-01-01T10:31:00.000Z',
       acknowledged: false,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
     },
     {
       id: 'a3',
@@ -35,6 +39,8 @@ describe('AlertsStore', () => {
       detail: 'Salió de la geocerca "Depósito Norte"',
       occurredAt: '2025-12-31T08:15:00.000Z',
       acknowledged: true,
+      acknowledgedAt: '2025-12-31T08:20:00.000Z',
+      acknowledgedBy: 'dispatcher@acme.test',
     },
   ];
 
@@ -125,14 +131,22 @@ describe('AlertsStore', () => {
       store.load();
     });
 
-    it('replaces the acknowledged alert in place with the service response', () => {
-      const updated: Alert = { ...alerts[0], acknowledged: true };
+    it('replaces the acknowledged alert in place with the service response, including who/when', () => {
+      const updated: Alert = {
+        ...alerts[0],
+        acknowledged: true,
+        acknowledgedAt: '2026-01-01T11:00:00.000Z',
+        acknowledgedBy: 'dispatcher@acme.test',
+      };
       alertsService.acknowledge.mockReturnValue(of(updated));
 
       store.acknowledge('a1');
 
       expect(alertsService.acknowledge).toHaveBeenCalledWith('a1');
-      expect(store.alerts().find((a) => a.id === 'a1')?.acknowledged).toBe(true);
+      const patched = store.alerts().find((a) => a.id === 'a1');
+      expect(patched?.acknowledged).toBe(true);
+      expect(patched?.acknowledgedAt).toBe('2026-01-01T11:00:00.000Z');
+      expect(patched?.acknowledgedBy).toBe('dispatcher@acme.test');
       expect(store.alerts()).toHaveLength(3);
     });
 

@@ -14,6 +14,11 @@ export interface Alert {
   readonly detail: string;
   readonly occurredAt: string;
   readonly acknowledged: boolean;
+  // Task T9 (prod QA, ack audit): null for an unacknowledged alert, and also
+  // for a legacy row acknowledged before the V14 audit columns existed --
+  // both render the same "Atendida" fallback (no fabricated author/time).
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
 }
 
 // The filter bar (Alerts.dc.html mockup) has one "Geocerca" chip covering

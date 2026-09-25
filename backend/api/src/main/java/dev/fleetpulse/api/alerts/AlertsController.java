@@ -62,7 +62,7 @@ public class AlertsController {
     @PatchMapping("/{id}/acknowledge")
     public AlertResponse acknowledge(@PathVariable UUID id) {
         AuthenticatedDispatcher dispatcher = currentDispatcher.require();
-        return alertsService.acknowledge(id, dispatcher.organizationId());
+        return alertsService.acknowledge(id, dispatcher.organizationId(), dispatcher.userId());
     }
 
     private static List<AlertType> parseTypes(List<String> values) {
