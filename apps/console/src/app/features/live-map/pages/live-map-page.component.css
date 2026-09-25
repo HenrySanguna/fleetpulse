@@ -56,10 +56,10 @@
   border-radius: 999px;
 }
 
-/* Mirrors LiveMapComponent's own MapLibre paint colors (motion state fills
-   and the geofence fill) so the legend matches the map exactly -- those
-   colors aren't design tokens, they're literal paint constants owned by
-   live-map.component.ts. */
+/* Mirrors LiveMapComponent's own MapLibre paint colors (motion state fills,
+   the geofence fill and the track line) so the legend matches the map
+   exactly -- those colors aren't design tokens, they're literal paint
+   constants owned by live-map.component.ts. */
 .map-legend-dot-moving {
   background: var(--fp-success);
 }
@@ -74,5 +74,14 @@
 
 .map-legend-dot-geofence {
   background: #2563eb;
+  border-radius: 2px;
+}
+
+/* Prod QA (2026-09-24): mirrors TRACK_LINE_COLOR. Shaped as a short bar
+   rather than a dot since it stands for a line, not a point/area layer. */
+.map-legend-dot-track {
+  background: #a855f7;
+  width: 14px;
+  height: 3px;
   border-radius: 2px;
 }

@@ -1,12 +1,26 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GeolocationService, type GeolocationPoint } from '../../../core/geolocation/geolocation.service';
 import { FleetStore } from '../services/fleet.store';
 import { VehicleTrackService } from '../services/vehicle-track.service';
+import type { TrackSegmentFeature } from '../services/vehicle-track.util';
 import { GeofenceService } from '../../geofencing/services/geofence.service';
 import { GeofenceStore } from '../../geofencing/services/geofence.store';
 import { LiveMapComponent } from './live-map.component';
+
+// Real signal (not a plain function) so a test can push a new value after the
+// component has already read it once and prove the render effect re-runs --
+// the same reason FakeGeolocationService above is a real async source rather
+// than a stubbed return value.
+class FakeVehicleTrackService {
+  private readonly features = signal<TrackSegmentFeature[]>([]);
+  readonly trackFeatures = this.features.asReadonly();
+
+  setFeatures(features: TrackSegmentFeature[]): void {
+    this.features.set(features);
+  }
+}
 
 // Deterministic stand-in for GeolocationService.position(): a real,
 // controllable async source (never emits synchronously), so tests can
@@ -162,13 +176,15 @@ describe('LiveMapComponent', () => {
   let store: InstanceType<typeof FleetStore>;
   let geofenceStore: InstanceType<typeof GeofenceStore>;
   let geolocationService: FakeGeolocationService;
+  let vehicleTrackService: FakeVehicleTrackService;
 
   beforeEach(() => {
     fakeMaps.length = 0;
     geolocationService = new FakeGeolocationService();
+    vehicleTrackService = new FakeVehicleTrackService();
     TestBed.configureTestingModule({
       providers: [
-        { provide: VehicleTrackService, useValue: { trackLine: () => undefined } },
+        { provide: VehicleTrackService, useValue: vehicleTrackService },
         // Task 5.3: GeofenceService does real HTTP (via getJson()), which
         // has no backend to hit here -- faked the same way VehicleTrackService
         // is above, while GeofenceStore (the pure state it feeds) stays real
@@ -216,6 +232,49 @@ describe('LiveMapComponent', () => {
 
     const trackLayer = map.addLayerCalls.find((layer) => layer['id'] === 'selected-vehicle-track-layer');
     expect(trackLayer).toMatchObject({ type: 'line', source: 'selected-vehicle-track' });
+  });
+
+  // Prod QA (2026-09-24): the track used to reuse a blue close enough to the
+  // geofence layer to blend into it.
+  it('colors the track line distinctly from vehicle markers and geofence layers', async () => {
+    const { map } = await createAndLoad();
+
+    const trackLayer = map.addLayerCalls.find((layer) => layer['id'] === 'selected-vehicle-track-layer') as {
+      paint: Record<string, unknown>;
+    };
+    const geofenceLayer = map.addLayerCalls.find((layer) => layer['id'] === 'geofences-layer') as {
+      paint: Record<string, unknown>;
+    };
+    const geofenceOutlineLayer = map.addLayerCalls.find((layer) => layer['id'] === 'geofences-outline-layer') as {
+      paint: Record<string, unknown>;
+    };
+    const vehicleLayer = map.addLayerCalls.find((layer) => layer['id'] === 'vehicles-layer') as {
+      paint: Record<string, unknown>;
+    };
+
+    const trackColor = trackLayer.paint['line-color'];
+    expect(trackColor).not.toBe(geofenceLayer.paint['fill-color']);
+    expect(trackColor).not.toBe(geofenceOutlineLayer.paint['line-color']);
+    expect(JSON.stringify(vehicleLayer.paint['icon-color'])).not.toContain(trackColor as string);
+  });
+
+  // Prod QA (2026-09-24): an implausible jump (simulator teleport, GPS gap)
+  // must never draw as a single straight line -- VehicleTrackService already
+  // splits it into separate segment features (vehicle-track.util.spec.ts),
+  // this only proves each one reaches the map source untouched.
+  it('renders every track segment from VehicleTrackService as its own feature on the track source', async () => {
+    const { map } = await createAndLoad();
+    const segments: TrackSegmentFeature[] = [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[1, 1], [2, 2]] }, properties: {} },
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[9, 9], [10, 10]] }, properties: {} },
+    ];
+    vehicleTrackService.setFeatures(segments);
+    TestBed.tick();
+
+    const source = map.getSource('selected-vehicle-track');
+    const calls = source?.setData.mock.calls ?? [];
+    const lastCall = calls[calls.length - 1]?.[0] as { features: unknown[] };
+    expect(lastCall.features).toEqual(segments);
   });
 
   // Task 5.3

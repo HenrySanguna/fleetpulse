@@ -106,4 +106,14 @@ describe('LiveMapPageComponent', () => {
     const detail = fixture.nativeElement.querySelector('[data-testid="vehicle-detail-position"]');
     expect(detail.textContent).toContain('5.00000, 6.00000');
   });
+
+  // Prod QA (2026-09-24): the track needed a legend entry of its own so its
+  // distinct color reads as "historical track", not an unlabeled line.
+  it('shows a legend entry for the vehicle track', async () => {
+    const fixture = TestBed.createComponent(LiveMapPageComponent);
+    await fixture.whenStable();
+
+    const legend = fixture.nativeElement.querySelector('.map-legend');
+    expect(legend.textContent).toContain('Recorrido');
+  });
 });
