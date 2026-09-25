@@ -115,9 +115,10 @@ class DispatcherSessionAuthenticationTest {
     // built from request.getScheme(), which Spring never sees as "https"
     // behind Caddy without server.forward-headers-strategy) and got blocked
     // as mixed content. SecurityConfig now answers with a plain 200 instead
-    // of any redirect -- asserted here by the absence of a Location header,
-    // not just the status code, since a 3xx with no Location would still
-    // pass a status-only check.
+    // of any redirect -- asserted here by the absence of a Location header
+    // too, not just the status code, since a 200 that still carried a
+    // stray redirect Location would pass a status-only check just as
+    // wrongly as a 3xx would.
     @Test
     void answersLogoutWithAPlainStatusAndNoRedirectAndEndsTheSession() {
         seedDispatcher("acme-logout", "dana@acme.test", "s3cret-pass", UserRole.DISPATCHER);
@@ -132,6 +133,21 @@ class DispatcherSessionAuthenticationTest {
 
         assertThat(logoutResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(logoutResponse.getHeaders().getLocation()).isNull();
+
+        // Confirms Spring Session's cookie serializer expires the SESSION
+        // cookie on invalidate, with the same attributes login's own cookie
+        // carries (SecurityConfig relies on this instead of an explicit
+        // deleteCookies(...) call).
+        List<String> logoutCookies = logoutResponse.getHeaders().get(HttpHeaders.SET_COOKIE);
+        assertThat(logoutCookies).isNotNull().isNotEmpty();
+        String expiredCookie = logoutCookies.stream()
+            .filter(cookie -> cookie.startsWith("SESSION="))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no SESSION cookie in " + logoutCookies));
+        assertThat(expiredCookie).containsIgnoringCase("Max-Age=0");
+        assertThat(expiredCookie).contains("HttpOnly");
+        assertThat(expiredCookie).contains("Secure");
+        assertThat(expiredCookie).containsIgnoringCase("SameSite=None");
 
         // The session the logout call authenticated with must no longer
         // work -- confirms invalidateHttpSession's default did fire, not
