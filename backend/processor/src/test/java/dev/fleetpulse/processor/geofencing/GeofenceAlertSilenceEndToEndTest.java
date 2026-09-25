@@ -1,5 +1,9 @@
-package dev.fleetpulse.processor.alerts;
+package dev.fleetpulse.processor.geofencing;
 
+import dev.fleetpulse.processor.alerts.AlertPublisher;
+import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
+import dev.fleetpulse.processor.alerts.JdbcAlertWriter;
 import dev.fleetpulse.processor.config.FleetpulseAlertingProperties;
 import dev.fleetpulse.processor.config.FleetpulseEtaProperties;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
@@ -14,12 +18,6 @@ import dev.fleetpulse.processor.eta.JdbcRecentSpeedReader;
 import dev.fleetpulse.processor.eta.JdbcVehicleDestinationEtaWriter;
 import dev.fleetpulse.processor.eta.JdbcVehicleDestinationReader;
 import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
-import dev.fleetpulse.processor.geofencing.AlertMqttConfig;
-import dev.fleetpulse.processor.geofencing.GeofenceEvaluator;
-import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
-import dev.fleetpulse.processor.geofencing.JdbcGeofenceAlertWriter;
-import dev.fleetpulse.processor.geofencing.JdbcVehicleFenceStateWriter;
-import dev.fleetpulse.processor.geofencing.MqttGeofenceAlertPublisher;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import dev.fleetpulse.processor.telemetry.JdbcTelemetryPositionWriter;
 import dev.fleetpulse.processor.telemetry.TelemetryImplausibilityFilter;
@@ -60,27 +58,32 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-// Tasks 3.2/3.3, test 5.6 ("exceso de velocidad sostenido genera una
-// alerta, no una por posicion"): wired against a real PostGIS database and a
-// real, secured Mosquitto broker -- the same dual-container convention
-// GeofenceAlertEndToEndTest established, since speeding/excessive-idle
-// detection is live-path (JdbcTelemetryPositionWriter's guarded write path),
-// not the offline @Scheduled path trips segmentation uses. Stays
-// deliberately minimal, the same way GeofenceAlertEndToEndTest's own class
-// comment states: proves the WIRING (a real message reaches
-// AlertRuleDispatcher through the real guarded path, and a fired alert is
-// both persisted to `alerts` and published on fleet/{orgId}/alerts) and
-// test 5.6's own dedup claim end to end -- AlertSilenceEngineTest already
-// fully proves the dedup DECISION logic itself without any broker or
-// database.
+// T8 (prod-qa-findings, "geofence alert silence window"): the dedicated
+// end-to-end proof that GeofenceRuleDispatcher's new silence layer actually
+// stops the alert-inbox flood, through the real dual-container (PostGIS +
+// Mosquitto) pipeline GeofenceEndToEndScenarioTest/GeofenceOscillationEndToEndTest
+// already established. Kept in its own file, same "one concern per
+// dual-container file" convention: GeofenceOscillationEndToEndTest proves the
+// EXISTING hysteresis layer (confirmation/exit buffering) damps GPS jitter
+// into a stable membership transition in the first place; this file proves
+// the SEPARATE, second layer added on top of it -- once genuine, CONFIRMED
+// transitions still repeat (a vehicle truly parking right at a boundary),
+// only the first of a burst within the window is notified, and the window
+// re-arms afterwards. confirmationReadings=1/confirmationDuration=ZERO below
+// (the same "instant confirmation" profile GeofenceEndToEndScenarioTest's own
+// 6.1 test uses) deliberately removes the hysteresis layer's OWN damping from
+// this test, so every alternating inside/outside reading is a genuinely
+// confirmed transition and the silencing this test asserts is never
+// incidentally helped along by confirmation delay.
 @Testcontainers
-class AlertRuleEndToEndTest {
+class GeofenceAlertSilenceEndToEndTest {
 
     private static final Path POSTGIS_PARTMAN_DOCKERFILE = Path
         .of(System.getProperty("user.dir"), "..", "..", "docker", "postgis-partman", "Dockerfile")
@@ -103,18 +106,17 @@ class AlertRuleEndToEndTest {
     private static final double DECOY_LAT = 40.4;
     private static final double DECOY_LON = -3.7;
 
-    // A single, essentially stationary point: this test's own condition is
-    // speeding (the message's own reported speedKmh), not real displacement
-    // -- TelemetryImplausibilityFilter judges implied speed from lat/lon
-    // movement, not the reported field, so keeping every position at the
-    // same coordinates keeps every message comfortably plausible regardless
-    // of the speedKmh value under test.
-    private static final double VEHICLE_LAT = 4.65;
-    private static final double VEHICLE_LON = -74.1;
+    private static final double GEOFENCE_LAT = 4.71;
+    private static final double CENTER_LON = -74.07;
+    private static final double HALF_WIDTH_DEG = 0.005;
+    private static final double INSIDE_LON = CENTER_LON;
+    // Well outside both the square and its (unused here, confirmationReadings=1
+    // makes the buffer irrelevant to entering) exit buffer -- same 0.02 deg
+    // scale GeofenceEndToEndScenarioTest's own crossing test uses.
+    private static final double OUTSIDE_LON = CENTER_LON - 0.02;
 
-    private static final double SPEED_LIMIT_KMH = 80.0;
-    private static final double SPEEDING_KMH = 100.0;
-    private static final double NORMAL_KMH = 40.0;
+    // T8's own production default (FleetpulseGeofencingProperties.silenceWindow).
+    private static final Duration SILENCE_WINDOW = Duration.ofMinutes(10);
 
     private static final String TOPIC_ORG_SEGMENT = "org-1";
 
@@ -141,66 +143,78 @@ class AlertRuleEndToEndTest {
         }
     }
 
+    // One continuous timeline, all timestamps application-level (each
+    // message's own recordedAt), not real sleep -- the same technique every
+    // dual-container test in this package already uses to simulate minutes
+    // of elapsed time in seconds of real test run time. Two geofences over
+    // the SAME square (one on_enter, one on_exit, GeofenceEndToEndScenarioTest's
+    // own 6.1 setup) so both GEOFENCE_ENTER and GEOFENCE_EXIT silencing are
+    // proven, on independent (vehicle, geofence, type) keys.
     @Test
-    void sustainedSpeedingAcrossManyPositionsProducesExactlyOneAlertNotOnePerPosition() throws Exception {
+    void oscillationWithinTheWindowIsSilencedAndReEntryAfterItElapsesFiresAgain() throws Exception {
         migrate();
-        // A silence window comfortably wider than this test's own trace
-        // duration: the point under test is that a still-ongoing episode
-        // does not repeat, not the window's own periodic-re-notification
-        // half (AlertSilenceEngineTest already proves that separately).
-        context = startContext(Duration.ofMinutes(15));
-        UUID organizationId = insertOrganization("Acme Alert Rules Org 1");
-        UUID vehicleId = insertVehicle(organizationId, "Truck-WU3-Speeding");
+        context = startContext();
+        UUID organizationId = insertOrganization("Acme Silence Org");
+        UUID vehicleId = insertVehicle(organizationId, "Truck-T8-Silence");
+        UUID enterGeofenceId = insertSquareGeofence(organizationId, "Silence Depot Enter", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_enter", null);
+        UUID exitGeofenceId = insertSquareGeofence(organizationId, "Silence Depot Exit", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_exit", null);
 
         connectDevicePublisher();
         warmUpUntilSubscribed();
         List<String> receivedAlerts = subscribeToAlerts(organizationId);
 
-        Instant cursor = Instant.now();
-        for (int i = 0; i < 6; i++) {
-            publishTelemetry(vehicleId, telemetryPayload(cursor, SPEEDING_KMH));
-            int expectedPositions = i + 1;
-            await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= expectedPositions);
-            cursor = cursor.plusSeconds(10);
-        }
+        Instant t0 = Instant.now();
 
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(countAlerts(vehicleId, "speeding")).isEqualTo(1));
+        // t0: ENTER #1 -- the very first alert of this key, always fires.
+        publishAndAwaitPosition(vehicleId, t0, GEOFENCE_LAT, INSIDE_LON, 1);
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
-            assertThat(receivedAlerts).anyMatch(payload ->
-                payload.contains("\"type\":\"speeding\"") && payload.contains(vehicleId.toString())));
+            assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(1));
+
+        // t0+60s: EXIT #1 -- the first alert of THIS OTHER key, always fires.
+        // (60s, not less: 2.2km/60s keeps the implied speed comfortably
+        // under FleetpulseTelemetryImplausibilityProperties' 300 km/h cap.)
+        publishAndAwaitPosition(vehicleId, t0.plusSeconds(60), GEOFENCE_LAT, OUTSIDE_LON, 2);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(1));
+
+        // t0+3min and t0+6min: the vehicle oscillates back in and out, well
+        // within SILENCE_WINDOW of each key's own last alert -- both
+        // confirmed transitions (this is instant-confirmation, so both
+        // really do flip membership and reach GeofenceRuleEngine's
+        // firedAlerts()) but neither is notified again.
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(3)), GEOFENCE_LAT, INSIDE_LON, 3);
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(6)), GEOFENCE_LAT, OUTSIDE_LON, 4);
+        // Give any wrongly-unsuppressed dispatch a moment to land before asserting its absence.
         Thread.sleep(500);
 
-        assertThat(countAlerts(vehicleId, "speeding")).isEqualTo(1);
-        assertThat(receivedAlerts).hasSize(1);
+        assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(1);
+        assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(1);
+        assertThat(countAlerts(vehicleId)).isEqualTo(2);
+        assertThat(receivedAlerts).hasSize(2);
+
+        // t0+11min: past ENTER's own SILENCE_WINDOW (from t0) -- fires again.
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(11)), GEOFENCE_LAT, INSIDE_LON, 5);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(2));
+
+        // t0+16min: past EXIT's own SILENCE_WINDOW (from t0+60s) -- fires again.
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(16)), GEOFENCE_LAT, OUTSIDE_LON, 6);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(2));
+        Thread.sleep(500);
+
+        assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(2);
+        assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(2);
+        assertThat(countAlerts(vehicleId)).isEqualTo(4);
+        assertThat(receivedAlerts).hasSize(4);
     }
 
-    @Test
-    void theConditionResolvingAndReoccurringProducesASecondAlert() throws Exception {
-        migrate();
-        context = startContext(Duration.ofMinutes(15));
-        UUID organizationId = insertOrganization("Acme Alert Rules Org 2");
-        UUID vehicleId = insertVehicle(organizationId, "Truck-WU3-Speeding-Resolve");
-
-        connectDevicePublisher();
-        warmUpUntilSubscribed();
-
-        Instant cursor = Instant.now();
-        publishTelemetry(vehicleId, telemetryPayload(cursor, SPEEDING_KMH));
-        await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= 1);
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(countAlerts(vehicleId, "speeding")).isEqualTo(1));
-
-        cursor = cursor.plusSeconds(10);
-        publishTelemetry(vehicleId, telemetryPayload(cursor, NORMAL_KMH));
-        await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= 2);
-        Thread.sleep(300);
-        assertThat(countAlerts(vehicleId, "speeding")).isEqualTo(1);
-
-        cursor = cursor.plusSeconds(10);
-        publishTelemetry(vehicleId, telemetryPayload(cursor, SPEEDING_KMH));
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(countAlerts(vehicleId, "speeding")).isEqualTo(2));
+    private void publishAndAwaitPosition(UUID vehicleId, Instant recordedAt, double lat, double lon, int expectedPositionCount) throws Exception {
+        publishTelemetry(vehicleId, telemetryPayload(recordedAt, lat, lon));
+        await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= expectedPositionCount);
     }
 
-    private AnnotationConfigApplicationContext startContext(Duration silenceWindow) {
+    private AnnotationConfigApplicationContext startContext() {
         AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
         ctx.registerBean(FleetpulseMqttProperties.class, () -> new FleetpulseMqttProperties(brokerUrl()));
         ctx.registerBean(FleetpulseMqttServiceCredentialsProperties.class, () -> new FleetpulseMqttServiceCredentialsProperties(
@@ -208,19 +222,21 @@ class AlertRuleEndToEndTest {
         ));
         ctx.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         ctx.registerBean(FleetpulseTelemetryImplausibilityProperties.class, () -> new FleetpulseTelemetryImplausibilityProperties(300.0));
-        ctx.registerBean(FleetpulseTelemetryBufferProperties.class,
-            () -> new FleetpulseTelemetryBufferProperties(1, Duration.ofMillis(100)));
+        ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(1, Duration.ofMillis(100)));
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
-        // This test proves speeding, not geofencing/ETA -- no geofence is
-        // ever seeded and no destination ever assigned, so both are wired
-        // with no-op publishers, mirroring GeofenceAlertEndToEndTest's own
-        // identical reasoning for the reverse case.
+        // confirmationReadings=1/confirmationDuration=ZERO: see this class's
+        // own comment for why instant confirmation isolates the silence
+        // layer under test from the unrelated hysteresis layer.
         ctx.registerBean(FleetpulseGeofencingProperties.class,
-            () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0, Duration.ofMinutes(10)));
+            () -> new FleetpulseGeofencingProperties(1, Duration.ZERO, 15.0, SILENCE_WINDOW));
         ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
         ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
+        // This test proves geofence alert silencing, not speeding/excessive-idle
+        // -- same no-op AlertPublisher, real writer/silence-state store
+        // reasoning as GeofenceOscillationEndToEndTest.
         ctx.registerBean(FleetpulseAlertingProperties.class,
-            () -> new FleetpulseAlertingProperties(SPEED_LIMIT_KMH, Duration.ofMinutes(10), silenceWindow));
+            () -> new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)));
+        ctx.registerBean(AlertPublisher.class, () -> alert -> { });
         ctx.registerBean(JdbcTemplate.class, () -> new JdbcTemplate(
             new DriverManagerDataSource(postgis.getJdbcUrl(), postgis.getUsername(), postgis.getPassword())
         ));
@@ -231,10 +247,7 @@ class AlertRuleEndToEndTest {
             AlertMqttConfig.class, MqttGeofenceAlertPublisher.class, GeofenceRuleDispatcher.class,
             JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
             JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
-            // The real writer/silence-state store AND the real MQTT publisher
-            // (MqttAlertPublisher, reusing AlertMqttConfig registered above)
-            // -- this is the one dispatcher this test actually exercises.
-            JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, MqttAlertPublisher.class, AlertRuleDispatcher.class,
+            JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, AlertRuleDispatcher.class,
             JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
@@ -278,14 +291,15 @@ class AlertRuleEndToEndTest {
         return received;
     }
 
-    // Same technique GeofenceAlertEndToEndTest's own warmUpUntilSubscribed
-    // uses -- see that class's comment for the full reasoning.
+    // Same technique GeofenceAlertEndToEndTest/GeofenceEndToEndScenarioTest
+    // established: publish a throwaway decoy on a never-asserted-against
+    // vehicle until the subscription is confirmed active, then discard it.
     private void warmUpUntilSubscribed() throws Exception {
         UUID warmupOrganizationId = insertOrganization("Warmup Org " + UUID.randomUUID());
         UUID warmupVehicleId = insertVehicle(warmupOrganizationId, "Warmup Vehicle");
         Instant warmupRecordedAt = Instant.now().minusSeconds(7200);
         for (int attempt = 1; attempt <= 10; attempt++) {
-            publishTelemetry(warmupVehicleId, telemetryPayloadAt(warmupRecordedAt, DECOY_LAT, DECOY_LON, null));
+            publishTelemetry(warmupVehicleId, telemetryPayload(warmupRecordedAt, DECOY_LAT, DECOY_LON));
             try {
                 await().atMost(Duration.ofSeconds(2)).until(() -> countPositions(warmupVehicleId) >= 1);
                 deletePositions(warmupVehicleId);
@@ -303,13 +317,8 @@ class AlertRuleEndToEndTest {
         devicePublisher.publish(telemetryTopic(vehicleId), message);
     }
 
-    private static String telemetryPayload(Instant recordedAt, double speedKmh) {
-        return telemetryPayloadAt(recordedAt, VEHICLE_LAT, VEHICLE_LON, speedKmh);
-    }
-
-    private static String telemetryPayloadAt(Instant recordedAt, double lat, double lon, Double speedKmh) {
-        String speedField = speedKmh == null ? "" : ",\"speedKmh\":" + speedKmh;
-        return "{\"recordedAt\":\"" + recordedAt + "\",\"lat\":" + lat + ",\"lon\":" + lon + speedField + "}";
+    private static String telemetryPayload(Instant recordedAt, double lat, double lon) {
+        return "{\"recordedAt\":\"" + recordedAt + "\",\"lat\":" + lat + ",\"lon\":" + lon + "}";
     }
 
     private static String telemetryTopic(UUID vehicleId) {
@@ -343,14 +352,29 @@ class AlertRuleEndToEndTest {
         }
     }
 
-    private static int countAlerts(UUID vehicleId, String alertType) throws SQLException {
+    private static int countAlerts(UUID vehicleId, UUID geofenceId, String alertType) throws SQLException {
         try (
             Connection connection = connect();
-            PreparedStatement statement = connection
-                .prepareStatement("SELECT count(*) FROM alerts WHERE vehicle_id = ? AND alert_type = ?")
+            PreparedStatement statement = connection.prepareStatement(
+                "SELECT count(*) FROM alerts WHERE vehicle_id = ? AND context = ? AND alert_type = ?"
+            )
         ) {
             statement.setObject(1, vehicleId);
-            statement.setString(2, alertType);
+            statement.setObject(2, geofenceId);
+            statement.setString(3, "geofence_" + alertType);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getInt(1);
+            }
+        }
+    }
+
+    private static int countAlerts(UUID vehicleId) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement("SELECT count(*) FROM alerts WHERE vehicle_id = ?")
+        ) {
+            statement.setObject(1, vehicleId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertThat(resultSet.next()).isTrue();
                 return resultSet.getInt(1);
@@ -384,6 +408,42 @@ class AlertRuleEndToEndTest {
             statement.setObject(2, organizationId);
             statement.setString(3, label);
             statement.setTimestamp(4, Timestamp.from(Instant.now()));
+            statement.executeUpdate();
+        }
+        return id;
+    }
+
+    private static UUID insertSquareGeofence(
+        UUID organizationId, String name, double centerLon, double centerLat, double halfWidthDegrees, String rule, Integer dwellSecs
+    ) throws SQLException {
+        UUID id = UUID.randomUUID();
+        double minLon = centerLon - halfWidthDegrees;
+        double maxLon = centerLon + halfWidthDegrees;
+        double minLat = centerLat - halfWidthDegrees;
+        double maxLat = centerLat + halfWidthDegrees;
+        String wkt = String.format(
+            Locale.ROOT,
+            "POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))",
+            minLon, minLat, maxLon, minLat, maxLon, maxLat, minLon, maxLat, minLon, minLat
+        );
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO geofences (id, organization_id, name, area, rule, dwell_secs, is_active, created_at) "
+                    + "VALUES (?, ?, ?, ST_GeomFromText(?, 4326)::geography, ?, ?, true, ?)"
+            )
+        ) {
+            statement.setObject(1, id);
+            statement.setObject(2, organizationId);
+            statement.setString(3, name);
+            statement.setString(4, wkt);
+            statement.setString(5, rule);
+            if (dwellSecs == null) {
+                statement.setNull(6, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(6, dwellSecs);
+            }
+            statement.setTimestamp(7, Timestamp.from(Instant.now()));
             statement.executeUpdate();
         }
         return id;

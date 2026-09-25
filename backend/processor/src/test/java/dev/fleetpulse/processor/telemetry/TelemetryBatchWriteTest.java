@@ -197,10 +197,11 @@ class TelemetryBatchWriteTest {
         return new GeofenceRuleDispatcher(
             jdbcTemplate,
             new GeofenceEvaluator(jdbcTemplate),
-            new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0),
+            new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0, Duration.ofMinutes(10)),
             alert -> { },
             new JdbcVehicleFenceStateWriter(jdbcTemplate),
-            new JdbcGeofenceAlertWriter(jdbcTemplate)
+            new JdbcGeofenceAlertWriter(jdbcTemplate),
+            new JdbcAlertSilenceStateStore(jdbcTemplate)
         );
     }
 

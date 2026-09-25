@@ -113,6 +113,11 @@ class GeofenceOscillationEndToEndTest {
     private static final int CONFIRMATION_READINGS = 3;
     private static final Duration CONFIRMATION_DURATION = Duration.ofSeconds(30);
     private static final double EXIT_BUFFER_METERS = 15.0;
+    // T8's own production default: this test's trace produces exactly one
+    // confirmed transition, so the silence window never gets a chance to
+    // suppress anything here -- GeofenceOscillationSilenceEndToEndTest is
+    // the dedicated proof for the silencing behavior itself.
+    private static final Duration GEOFENCE_SILENCE_WINDOW = Duration.ofMinutes(10);
 
     // DoD "ruido realista": a fixed seed so this specific trace is
     // reproducible across runs -- not re-rolled every build -- while its
@@ -279,7 +284,7 @@ class GeofenceOscillationEndToEndTest {
         ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(1, Duration.ofMillis(100)));
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
         ctx.registerBean(FleetpulseGeofencingProperties.class,
-            () -> new FleetpulseGeofencingProperties(CONFIRMATION_READINGS, CONFIRMATION_DURATION, EXIT_BUFFER_METERS));
+            () -> new FleetpulseGeofencingProperties(CONFIRMATION_READINGS, CONFIRMATION_DURATION, EXIT_BUFFER_METERS, GEOFENCE_SILENCE_WINDOW));
         // Task 2.4 (06-add-trips-eta-alerts, WU2): no destinations are ever
         // assigned by this test -- see GeofenceAlertEndToEndTest's identical
         // registration for the full reasoning.

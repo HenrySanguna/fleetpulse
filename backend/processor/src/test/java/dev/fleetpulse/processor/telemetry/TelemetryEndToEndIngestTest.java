@@ -199,7 +199,8 @@ class TelemetryEndToEndIngestTest {
         // ever seeded here, so a no-op publisher is sufficient; the real
         // GeofenceEvaluator/writers still run against the same database to
         // prove the wiring itself does not break ordinary telemetry ingest.
-        ctx.registerBean(FleetpulseGeofencingProperties.class, () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0));
+        ctx.registerBean(FleetpulseGeofencingProperties.class,
+            () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0, Duration.ofMinutes(10)));
         ctx.registerBean(GeofenceAlertPublisher.class, () -> alert -> { });
         // Task 2.4 (06-add-trips-eta-alerts, WU2): same "no destinations
         // ever seeded, real reader/calculator/writer, no-op publisher"
