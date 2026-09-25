@@ -219,7 +219,7 @@ class AlertsEndpointTest {
         UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Ack-List");
         UUID alertId = UUID.randomUUID();
         seedAlert(alertId, org.getId(), vehicleId, "speeding", null, Instant.now());
-        Instant acknowledgedAt = Instant.now();
+        Instant acknowledgedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         acknowledgeDirectlyWithAudit(alertId, dispatcher.getId(), acknowledgedAt);
 
         ResponseEntity<AlertResponse[]> listed = restTemplate.exchange(
@@ -228,7 +228,7 @@ class AlertsEndpointTest {
         assertThat(listed.getBody()).hasSize(1);
         assertThat(listed.getBody()[0].acknowledged()).isTrue();
         assertThat(listed.getBody()[0].acknowledgedBy()).isEqualTo("alerts-ack-list@acme.test");
-        assertThat(listed.getBody()[0].acknowledgedAt()).isNotNull();
+        assertThat(listed.getBody()[0].acknowledgedAt()).isEqualTo(acknowledgedAt);
     }
 
     @Test
