@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
+import { Drawer } from 'primeng/drawer';
 import { Subject, of, throwError } from 'rxjs';
 import type { DispatcherSelfView } from '@fleetpulse/api-client';
 import { AuthService } from '../auth/auth.service';
@@ -13,8 +14,32 @@ import { ActivityReportStore } from '../../features/activity-report/services/act
 import { AppShellComponent } from './app-shell.component';
 
 function click(fixture: ComponentFixture<AppShellComponent>, testId: string): void {
-  fixture.debugElement.query(By.css(`[data-testid="${testId}"]`))?.triggerEventHandler('click', undefined);
+  // RouterLink's own host click listener (used by the nav `<a>`s) reads
+  // `event.button`/modifier keys before navigating -- `undefined` throws
+  // there, even though it was fine for the plain `<button>` clicks this
+  // helper originally covered.
+  fixture.debugElement
+    .query(By.css(`[data-testid="${testId}"]`))
+    ?.triggerEventHandler('click', { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false });
   fixture.detectChanges();
+}
+
+// BreakpointObserver's MediaMatcher reads `window.matchMedia` once, at
+// construction -- jsdom has no real implementation, so without this it
+// silently falls back to a no-op that always reports "not matching" (i.e.
+// always desktop). Fakes `addListener`/`removeListener` (the legacy API
+// @angular/cdk/layout actually calls), not `addEventListener`.
+function stubMatchMedia(matches: boolean): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
 }
 
 describe('AppShellComponent', () => {
@@ -48,6 +73,10 @@ describe('AppShellComponent', () => {
 
     router = TestBed.inject(Router);
     vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
   function createFixture(): ComponentFixture<AppShellComponent> {
@@ -131,5 +160,48 @@ describe('AppShellComponent', () => {
 
     expect(authStore.clear).not.toHaveBeenCalled();
     expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  describe('mobile navigation (<768px)', () => {
+    it('renders the static rail and no toggle button on a desktop-sized viewport', () => {
+      stubMatchMedia(false);
+      const fixture = createFixture();
+      const compiled = fixture.nativeElement as HTMLElement;
+
+      expect(compiled.querySelector('nav.rail')).not.toBeNull();
+      expect(compiled.querySelector('[data-testid="mobile-nav-toggle"]')).toBeNull();
+      expect(fixture.debugElement.query(By.directive(Drawer))).toBeNull();
+    });
+
+    it('replaces the static rail with a toggle button and a closed drawer on a mobile-sized viewport', () => {
+      stubMatchMedia(true);
+      const fixture = createFixture();
+      const compiled = fixture.nativeElement as HTMLElement;
+
+      expect(compiled.querySelector('[data-testid="mobile-nav-toggle"]')).not.toBeNull();
+      const drawer = fixture.debugElement.query(By.directive(Drawer))?.componentInstance as Drawer | undefined;
+      expect(drawer?.visible).toBe(false);
+    });
+
+    it('opens the drawer when the toggle button is clicked', () => {
+      stubMatchMedia(true);
+      const fixture = createFixture();
+
+      click(fixture, 'mobile-nav-toggle');
+
+      const drawer = fixture.debugElement.query(By.directive(Drawer))?.componentInstance as Drawer | undefined;
+      expect(drawer?.visible).toBe(true);
+    });
+
+    it('closes the drawer when a nav item is selected', () => {
+      stubMatchMedia(true);
+      const fixture = createFixture();
+      click(fixture, 'mobile-nav-toggle');
+
+      click(fixture, 'nav-geofences');
+
+      const drawer = fixture.debugElement.query(By.directive(Drawer))?.componentInstance as Drawer | undefined;
+      expect(drawer?.visible).toBe(false);
+    });
   });
 });
