@@ -24,6 +24,7 @@ class FakeGeofenceDrawingEditorComponent {
   readonly existingGeofences = input<readonly GeofenceResponse[]>([]);
   readonly resetToken = input<number>(0);
   readonly readOnly = input<boolean>(false);
+  readonly selectedGeofence = input<GeofenceResponse | undefined>(undefined);
   readonly draftChange = output<GeofenceDraft | undefined>();
 }
 
@@ -58,6 +59,14 @@ function clickButton(fixture: Fixture, testId: string): void {
 
 function saveButtonDisabled(fixture: Fixture): boolean {
   return (fixture.debugElement.query(By.css('[data-testid="save-geofence"]')).componentInstance as { disabled: boolean }).disabled;
+}
+
+// p-select/p-inputNumber implement ControlValueAccessor themselves (unlike
+// pInputText, a directive on a native input whose `disabled` DOM property
+// Angular's own DefaultValueAccessor sets directly) -- their effective
+// disabled state is their own `$disabled` computed, set by setDisabledState.
+function fieldDisabled(fixture: Fixture, testId: string): boolean {
+  return (fixture.debugElement.query(By.css(`[data-testid="${testId}"]`)).componentInstance as { $disabled: () => boolean }).$disabled();
 }
 
 describe('GeofenceEditorPageComponent', () => {
@@ -172,6 +181,38 @@ describe('GeofenceEditorPageComponent', () => {
     expect(nameInput.value).toBe('Depot');
     expect(fixture.nativeElement.querySelector('[data-testid="geofence-dwell-input"]')).not.toBeNull();
     expect(saveButtonDisabled(fixture)).toBe(false);
+  });
+
+  // Prod QA fix: a FLEET_ADMIN must still be able to edit every field.
+  it('keeps the name/rule/dwellSecs controls enabled for a FLEET_ADMIN', () => {
+    const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_DWELL', dwellSecs: 30, vertices: [] };
+    store.setGeofences([existing]);
+    const fixture = createFixture();
+    click(fixture, 'select-geofence-g1');
+
+    const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
+    expect(nameInput.disabled).toBe(false);
+    expect(fieldDisabled(fixture, 'geofence-rule-select')).toBe(false);
+    expect(fieldDisabled(fixture, 'geofence-dwell-input')).toBe(false);
+  });
+
+  // Prod QA fix: selecting a geofence hands it to the drawing editor, which
+  // owns the MapLibre map and does the actual fitBounds call (its own spec
+  // covers that); this only proves the wiring.
+  it('passes the selected geofence down to the drawing editor', () => {
+    const existing: GeofenceResponse = {
+      id: 'g1',
+      name: 'Depot',
+      vertices: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }, { lat: 3, lon: 1 }],
+    };
+    store.setGeofences([existing]);
+    const fixture = createFixture();
+
+    click(fixture, 'select-geofence-g1');
+
+    const editor = fixture.debugElement.query(By.directive(FakeGeofenceDrawingEditorComponent))
+      .componentInstance as FakeGeofenceDrawingEditorComponent;
+    expect(editor.selectedGeofence()).toEqual(existing);
   });
 
   // Regression, editing mode: canSave must re-evaluate on every form status
@@ -289,6 +330,22 @@ describe('GeofenceEditorPageComponent', () => {
 
       const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
       expect(nameInput.value).toBe('Depot');
+    });
+
+    // Prod QA fix: the fields were previously still editable for a
+    // dispatcher even though Save/New were hidden -- a request would just
+    // 403, but the UI implied the edit was possible.
+    it('disables the name/rule/dwellSecs controls for a non-admin', () => {
+      const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_DWELL', dwellSecs: 30, vertices: [] };
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+
+      click(fixture, 'select-geofence-g1');
+
+      const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
+      expect(nameInput.disabled).toBe(true);
+      expect(fieldDisabled(fixture, 'geofence-rule-select')).toBe(true);
+      expect(fieldDisabled(fixture, 'geofence-dwell-input')).toBe(true);
     });
 
     it('shows the "New" button, the drawing editor without readOnly, and the Save button again for a FLEET_ADMIN', () => {
