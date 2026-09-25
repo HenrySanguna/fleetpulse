@@ -120,6 +120,84 @@ class AlertSchemaTest {
         }
     }
 
+    // Task T9 (prod QA, V14): acknowledged_at/acknowledged_by default to NULL
+    // on insert (V12's pre-existing `acknowledged` boolean already defaults
+    // to false) and accept a real dispatcher (`users`) reference once set --
+    // the JdbcAlertsRepository write path itself is AlertsEndpointTest's job,
+    // this proves the schema/constraint alone.
+    @Test
+    void acknowledgedAtAndAcknowledgedByDefaultToNullAndAcceptADispatcherReference() throws Exception {
+        migrate();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Alerts Org 7");
+            UUID vehicleId = insertVehicle(connection, organizationId, "Truck-AL-7");
+            UUID dispatcherId = insertUser(connection, organizationId, "dispatcher-al-7@acme.test");
+            UUID alertId = insertAlert(connection, organizationId, vehicleId, "speeding", null);
+
+            try (
+                PreparedStatement statement = connection
+                    .prepareStatement("SELECT acknowledged_at, acknowledged_by FROM alerts WHERE id = ?")
+            ) {
+                statement.setObject(1, alertId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    assertThat(resultSet.next()).isTrue();
+                    assertThat(resultSet.getTimestamp("acknowledged_at")).isNull();
+                    assertThat(resultSet.getObject("acknowledged_by")).isNull();
+                }
+            }
+
+            acknowledge(connection, alertId, dispatcherId);
+
+            try (
+                PreparedStatement statement = connection
+                    .prepareStatement("SELECT acknowledged_at, acknowledged_by FROM alerts WHERE id = ?")
+            ) {
+                statement.setObject(1, alertId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    assertThat(resultSet.next()).isTrue();
+                    assertThat(resultSet.getTimestamp("acknowledged_at")).isNotNull();
+                    assertThat(resultSet.getObject("acknowledged_by")).isEqualTo(dispatcherId);
+                }
+            }
+        }
+    }
+
+    // Proves acknowledged_by's ON DELETE SET NULL: deleting the dispatcher
+    // who acknowledged an alert must not block the deletion (no RESTRICT/
+    // exception) and must not cascade into deleting the alert itself -- the
+    // alert's own acknowledged history (the boolean) survives, only the
+    // now-dangling identity reference is cleared.
+    @Test
+    void deletingTheAcknowledgingDispatcherSetsAcknowledgedByToNullButKeepsTheAlertAcknowledged() throws Exception {
+        migrate();
+
+        try (Connection connection = connect()) {
+            UUID organizationId = insertOrganization(connection, "Acme Alerts Org 8");
+            UUID vehicleId = insertVehicle(connection, organizationId, "Truck-AL-8");
+            UUID dispatcherId = insertUser(connection, organizationId, "dispatcher-al-8@acme.test");
+            UUID alertId = insertAlert(connection, organizationId, vehicleId, "speeding", null);
+            acknowledge(connection, alertId, dispatcherId);
+
+            try (PreparedStatement statement = connection.prepareStatement("DELETE FROM users WHERE id = ?")) {
+                statement.setObject(1, dispatcherId);
+                statement.executeUpdate();
+            }
+
+            try (
+                PreparedStatement statement = connection
+                    .prepareStatement("SELECT acknowledged, acknowledged_by FROM alerts WHERE id = ?")
+            ) {
+                statement.setObject(1, alertId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    assertThat(resultSet.next()).isTrue();
+                    assertThat(resultSet.getBoolean("acknowledged")).isTrue();
+                    assertThat(resultSet.getObject("acknowledged_by")).isNull();
+                }
+            }
+        }
+    }
+
     @Test
     void alertSilenceStateEnforcesOneRowPerVehicleAlertTypeAndContext() throws Exception {
         migrate();
@@ -220,6 +298,38 @@ class AlertSchemaTest {
             statement.executeUpdate();
         }
         return id;
+    }
+
+    private static UUID insertUser(Connection connection, UUID organizationId, String email) throws SQLException {
+        UUID id = UUID.randomUUID();
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO users (id, organization_id, email, password_hash, role, active, created_at) "
+                    + "VALUES (?, ?, ?, ?, ?, true, ?)"
+            )
+        ) {
+            statement.setObject(1, id);
+            statement.setObject(2, organizationId);
+            statement.setString(3, email);
+            statement.setString(4, "hash");
+            statement.setString(5, "DISPATCHER");
+            statement.setTimestamp(6, Timestamp.from(Instant.now()));
+            statement.executeUpdate();
+        }
+        return id;
+    }
+
+    private static void acknowledge(Connection connection, UUID alertId, UUID dispatcherId) throws SQLException {
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "UPDATE alerts SET acknowledged = true, acknowledged_at = ?, acknowledged_by = ? WHERE id = ?"
+            )
+        ) {
+            statement.setTimestamp(1, Timestamp.from(Instant.now()));
+            statement.setObject(2, dispatcherId);
+            statement.setObject(3, alertId);
+            statement.executeUpdate();
+        }
     }
 
     private static UUID insertGeofence(Connection connection, UUID organizationId, String name) throws SQLException {

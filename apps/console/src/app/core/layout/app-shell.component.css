@@ -118,3 +118,46 @@
   background: var(--fp-bg);
   color: var(--fp-text-muted);
 }
+
+/* Prod QA T6: the <768px top bar that replaces the permanent rail column,
+   holding the hamburger toggle for the overlay drawer. */
+.mobile-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--fp-surface);
+  border-bottom: 1px solid var(--fp-border);
+  flex-shrink: 0;
+}
+
+.mobile-topbar-toggle {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--fp-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mobile-topbar-toggle:hover {
+  background: var(--fp-bg);
+}
+
+.mobile-topbar-brand {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fp-text);
+}
+
+/* The same rail markup, reused inside p-drawer's own fixed-width panel --
+   fills it instead of clipping to the desktop rail's 216px column. */
+.rail--drawer {
+  width: 100%;
+  border-right: none;
+}

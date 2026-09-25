@@ -11,10 +11,10 @@ interface MotionStateOption {
 }
 
 const MOTION_STATE_OPTIONS: MotionStateOption[] = [
-  { label: 'All states', value: undefined },
-  { label: 'Moving', value: 'MOVING' },
-  { label: 'Idling', value: 'IDLING' },
-  { label: 'Stopped', value: 'STOPPED' },
+  { label: 'Todos los estados', value: undefined },
+  { label: 'En movimiento', value: 'MOVING' },
+  { label: 'Ralentí', value: 'IDLING' },
+  { label: 'Detenido', value: 'STOPPED' },
 ];
 
 // Task 5.1: filter/search controls for the side panel. Presentational --

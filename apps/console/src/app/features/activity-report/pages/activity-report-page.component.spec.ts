@@ -12,7 +12,10 @@ const VEHICLES: ActivityVehicleOption[] = [
 const REPORTS: Record<string, ActivityReport> = {
   'VH-1042': {
     vehicleId: 'VH-1042',
-    summary: { totalDistanceKm: 428.6, movingMinutes: 684, idleMinutes: 112, avgSpeedKmh: 54, maxSpeedKmh: 97 },
+    // Prod QA fix: avgSpeedKmh here mirrors the actual production bug report
+    // (a raw float average, e.g. "44.36987553618879") -- kept as a decimal
+    // deliberately so a regression back to raw interpolation fails a test.
+    summary: { totalDistanceKm: 428.6, movingMinutes: 684, idleMinutes: 112, avgSpeedKmh: 44.36987553618879, maxSpeedKmh: 97 },
     dailyDistances: [{ day: '2026-09-14', distanceKm: 52 }],
     trips: [
       {
@@ -22,7 +25,7 @@ const REPORTS: Record<string, ActivityReport> = {
         distanceKm: 61.2,
         durationMinutes: 136,
         idleMinutes: 8,
-        maxSpeedKmh: 94,
+        maxSpeedKmh: 94.7,
       },
       {
         id: 't-1042-2',
@@ -109,6 +112,18 @@ describe('ActivityReportPageComponent', () => {
     const bar: HTMLElement = fixture.nativeElement.querySelector('.bar-day');
     expect(bar.textContent?.trim()).not.toBe('');
     expect(bar.textContent).not.toContain('2026-09-14');
+  });
+
+  // Prod QA fix: average speed is a genuine backend float
+  // (44.36987553618879) -- both summary speeds and each trip row's max speed
+  // must render as rounded whole km/h, never the raw decimal.
+  it('formats average/max speed and each trip\'s max speed as rounded integers, never a raw float', () => {
+    const fixture = createFixture();
+
+    expect(statValue(fixture, 'stat-speed')).toContain('44 / 97');
+    const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="activity-trip-row"]');
+    const cells = row.querySelectorAll('td');
+    expect(cells[6].textContent?.trim()).toBe('95 km/h');
   });
 
   it('gives the vehicle selector an accessible name', () => {

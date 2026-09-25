@@ -29,4 +29,15 @@ export class VehicleListComponent {
         return 'secondary';
     }
   }
+
+  protected motionStateLabel(vehicle: VehicleView): string {
+    switch (vehicle.motionState) {
+      case 'MOVING':
+        return 'En movimiento';
+      case 'IDLING':
+        return 'Ralentí';
+      default:
+        return 'Detenido';
+    }
+  }
 }

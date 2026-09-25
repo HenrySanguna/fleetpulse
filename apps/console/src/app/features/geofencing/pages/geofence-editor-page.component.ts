@@ -23,9 +23,9 @@ interface GeofenceFormControls {
 // PrimeNG's Select `options` input is typed as a mutable array, so this
 // cannot be `ReadonlyArray` even though nothing here ever mutates it.
 const RULE_OPTIONS: Array<{ label: string; value: GeofenceRequest.RuleEnum }> = [
-  { label: 'On enter', value: GeofenceRequest.RuleEnum.OnEnter },
-  { label: 'On exit', value: GeofenceRequest.RuleEnum.OnExit },
-  { label: 'On dwell', value: GeofenceRequest.RuleEnum.OnDwell },
+  { label: 'Al entrar', value: GeofenceRequest.RuleEnum.OnEnter },
+  { label: 'Al salir', value: GeofenceRequest.RuleEnum.OnExit },
+  { label: 'Al permanecer', value: GeofenceRequest.RuleEnum.OnDwell },
 ];
 
 // Mirrors GeofenceService's (backend, WU6) own cross-field check --
@@ -168,8 +168,8 @@ export class GeofenceEditorPageComponent implements OnInit {
         this.saving.set(false);
         this.saveError.set(
           error instanceof HttpErrorResponse && error.status === 403
-            ? "You don't have permission to manage geofences."
-            : 'Failed to save the geofence. Check the shape and try again.',
+            ? 'No tienes permiso para gestionar geocercas.'
+            : 'No se pudo guardar la geocerca. Verifica la forma e inténtalo de nuevo.',
         );
       },
     });

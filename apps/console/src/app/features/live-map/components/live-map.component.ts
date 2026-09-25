@@ -21,7 +21,7 @@ import { VehicleTrackService } from '../services/vehicle-track.service';
 import { VehicleInterpolationEngine } from '../services/vehicle-interpolation';
 import { toVehicleFeatureCollection } from '../services/vehicle-symbol.util';
 import type { VehicleState } from '../models/vehicle-state.model';
-import type { TrackLineFeature } from '../services/vehicle-track.service';
+import type { TrackSegmentFeature } from '../services/vehicle-track.util';
 import { toGeofenceFeatureCollection } from '../../geofencing/services/geofence-geometry.util';
 import { GeofenceService } from '../../geofencing/services/geofence.service';
 import { GeofenceStore } from '../../geofencing/services/geofence.store';
@@ -43,6 +43,13 @@ const TRACK_LAYER_ID = 'selected-vehicle-track-layer';
 const GEOFENCES_SOURCE_ID = 'geofences';
 const GEOFENCES_LAYER_ID = 'geofences-layer';
 const GEOFENCES_OUTLINE_LAYER_ID = 'geofences-outline-layer';
+
+// Prod QA (2026-09-24): distinct from every vehicle motion-state color
+// (#22c55e/#eab308/#6b7280) and the geofence fill/outline (#2563eb) -- the
+// track used to reuse a blue close enough to the geofence layer to blend
+// into it. `live-map-page.component.css`'s `.map-legend-dot-track` mirrors
+// this literal value, same convention as the geofence/moving/idling dots.
+const TRACK_LINE_COLOR = '#a855f7';
 
 // Fallback view used both at map creation (so creation never waits on the
 // geolocation permission prompt) and if geolocation ends up denied/
@@ -148,7 +155,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     // del mapa en vivo respecto al servicio HTTP" means this resource
     // failing must never affect the live vehicle rendering above.
     effect(() => {
-      this.renderTrack(this.trackService.trackLine());
+      this.renderTrack(this.trackService.trackFeatures());
     });
 
     // Task 5.2: list -> map. Centers on whichever vehicle FleetStore.
@@ -262,7 +269,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
         }
       });
 
-      this.renderTrack(this.trackService.trackLine());
+      this.renderTrack(this.trackService.trackFeatures());
       this.renderGeofences(this.geofenceStore.geofences());
     });
 
@@ -327,12 +334,12 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
     source?.setData(collection);
   }
 
-  private renderTrack(feature: TrackLineFeature | undefined): void {
+  private renderTrack(features: TrackSegmentFeature[]): void {
     if (!this.styleLoaded() || !this.map) {
       return;
     }
     const source = this.map.getSource(TRACK_SOURCE_ID) as GeoJSONSource | undefined;
-    source?.setData(feature ? { type: 'FeatureCollection', features: [feature] } : EMPTY_TRACK_COLLECTION);
+    source?.setData(features.length > 0 ? { type: 'FeatureCollection', features } : EMPTY_TRACK_COLLECTION);
   }
 
   // Task 5.3: same pure mapper the geofencing editor's own drawing-context
@@ -422,7 +429,7 @@ export class LiveMapComponent implements AfterViewInit, OnDestroy {
       type: 'line',
       source: TRACK_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#3b82f6', 'line-width': 3 },
+      paint: { 'line-color': TRACK_LINE_COLOR, 'line-width': 3 },
     });
   }
 

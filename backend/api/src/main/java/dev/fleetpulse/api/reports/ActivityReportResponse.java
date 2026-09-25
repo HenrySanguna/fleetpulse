@@ -13,10 +13,20 @@ import java.util.UUID;
 // over unchanged; only their per-field content shape moved from
 // presentation-formatted strings to raw data (see
 // DailyDistancePointResponse/ActivityTripResponse's own comments).
+//
+// Task 10: inProgressTrip is nullable -- present only when the vehicle is
+// currently inside an unclosed trip AND the requested range reaches today
+// (see ActivityReportService.computeInProgressTrip()); null for a past
+// range or a vehicle that is not currently moving/recently stopped. Kept as
+// its own field rather than folding it into `trips` (e.g. a nullable `id`
+// on ActivityTripResponse) since it has no id/endedAt of its own -- a
+// separate, smaller DTO (ActivityInProgressTripResponse) is the cleaner
+// contract.
 public record ActivityReportResponse(
     UUID vehicleId,
     ActivityReportSummaryResponse summary,
     List<DailyDistancePointResponse> dailyDistances,
-    List<ActivityTripResponse> trips
+    List<ActivityTripResponse> trips,
+    ActivityInProgressTripResponse inProgressTrip
 ) {
 }

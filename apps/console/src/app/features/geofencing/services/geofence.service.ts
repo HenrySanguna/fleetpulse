@@ -25,7 +25,7 @@ export class GeofenceService {
       next: (geofences) => this.store.setGeofences(geofences),
       error: (error: unknown) => {
         console.error('GeofenceService: failed to load geofences', error);
-        this.store.setError('Failed to load geofences');
+        this.store.setError('No se pudieron cargar las geocercas');
       },
     });
   }

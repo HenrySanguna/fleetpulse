@@ -2,7 +2,7 @@
   <div class="page-head">
     <div>
       <h1>Alertas</h1>
-      <p class="page-sub">{{ unacknowledgedCount() }} sin reconocer de {{ totalCount() }} en las últimas 24 horas</p>
+      <p class="page-sub">{{ unacknowledgedCount() }} sin atender de {{ totalCount() }} en las últimas 24 horas</p>
     </div>
   </div>
 
@@ -103,7 +103,13 @@
             <div class="alert-detail">{{ alert.detail }}</div>
           </div>
           @if (alert.acknowledged) {
-            <span class="tag tag-ack">Reconocida</span>
+            <span class="tag tag-ack">
+              @if (alert.acknowledgedBy && alert.acknowledgedAt) {
+                Atendida por {{ alert.acknowledgedBy }} &middot; {{ alert.acknowledgedAt | date: 'dd/MM/yyyy HH:mm' }}
+              } @else {
+                Atendida
+              }
+            </span>
           } @else {
             <span class="tag tag-new">Nueva</span>
             <button

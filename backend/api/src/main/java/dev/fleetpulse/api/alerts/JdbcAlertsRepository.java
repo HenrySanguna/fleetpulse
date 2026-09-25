@@ -34,16 +34,25 @@ class JdbcAlertsRepository {
 
     private static final String SELECT_COLUMNS_SQL = """
         SELECT a.id, a.vehicle_id, v.label AS vehicle_label, a.alert_type, a.context, g.name AS context_label,
-               a.occurred_at, a.acknowledged
+               a.occurred_at, a.acknowledged, a.acknowledged_at, u.email AS acknowledged_by_email
         FROM alerts a
         JOIN vehicles v ON v.id = a.vehicle_id
         LEFT JOIN geofences g ON g.id = a.context
+        LEFT JOIN users u ON u.id = a.acknowledged_by
         """;
 
     private static final String SELECT_ONE_SQL = SELECT_COLUMNS_SQL + "WHERE a.id = ? AND a.organization_id = ?";
 
+    // T9: guarded by `AND acknowledged = false` so a second call (or a
+    // concurrent double-click racing this same repository call) can never
+    // overwrite the original acknowledged_at/acknowledged_by -- the first
+    // acknowledgement wins, matching AlertsService.acknowledge()'s own
+    // "already acknowledged? skip the write" check one layer up. Both guards
+    // together mean this stays correct even if a future caller skips the
+    // service-level check.
     private static final String UPDATE_ACKNOWLEDGE_SQL = """
-        UPDATE alerts SET acknowledged = true WHERE id = ? AND organization_id = ?
+        UPDATE alerts SET acknowledged = true, acknowledged_at = ?, acknowledged_by = ?
+        WHERE id = ? AND organization_id = ? AND acknowledged = false
         """;
 
     private final ObjectProvider<JdbcTemplate> jdbcTemplate;
@@ -84,8 +93,9 @@ class JdbcAlertsRepository {
         return jdbcTemplate.getObject().query(sql.toString(), (rs, rowNum) -> toResponse(rs), params.toArray());
     }
 
-    boolean acknowledge(UUID id, UUID organizationId) {
-        return jdbcTemplate.getObject().update(UPDATE_ACKNOWLEDGE_SQL, id, organizationId) > 0;
+    boolean acknowledge(UUID id, UUID organizationId, UUID dispatcherId, Instant acknowledgedAt) {
+        return jdbcTemplate.getObject()
+            .update(UPDATE_ACKNOWLEDGE_SQL, Timestamp.from(acknowledgedAt), dispatcherId, id, organizationId) > 0;
     }
 
     Optional<AlertResponse> findById(UUID id, UUID organizationId) {
@@ -102,6 +112,7 @@ class JdbcAlertsRepository {
     private static AlertResponse toResponse(ResultSet rs) throws SQLException {
         UUID context = (UUID) rs.getObject("context");
         Timestamp occurredAt = rs.getTimestamp("occurred_at");
+        Timestamp acknowledgedAt = rs.getTimestamp("acknowledged_at");
         return new AlertResponse(
             (UUID) rs.getObject("id"),
             (UUID) rs.getObject("vehicle_id"),
@@ -110,7 +121,9 @@ class JdbcAlertsRepository {
             context,
             context == null ? null : rs.getString("context_label"),
             occurredAt == null ? null : occurredAt.toInstant(),
-            rs.getBoolean("acknowledged")
+            rs.getBoolean("acknowledged"),
+            acknowledgedAt == null ? null : acknowledgedAt.toInstant(),
+            rs.getString("acknowledged_by_email")
         );
     }
 }

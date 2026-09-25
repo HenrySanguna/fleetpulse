@@ -18,5 +18,7 @@ export interface AlertResponse {
     contextLabel?: string;
     occurredAt?: string;
     acknowledged?: boolean;
+    acknowledgedAt?: string;
+    acknowledgedBy?: string;
 }
 

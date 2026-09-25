@@ -5,40 +5,40 @@
     <div class="toolbar-float absolute flex flex-col gap-2">
       @if (mode() === 'idle') {
         <div class="flex gap-2">
-          <p-button data-testid="draw-polygon" label="Draw polygon" size="small" (onClick)="startPolygon()" />
-          <p-button data-testid="draw-circle" label="Draw circle" size="small" (onClick)="startCircle()" />
+          <p-button data-testid="draw-polygon" label="Dibujar polígono" size="small" (onClick)="startPolygon()" />
+          <p-button data-testid="draw-circle" label="Dibujar círculo" size="small" (onClick)="startCircle()" />
         </div>
       }
 
       @if (mode() === 'polygon') {
         <div class="flex items-center gap-2 text-sm">
-          <span>{{ vertexCount() }} vertices (min. 3)</span>
+          <span>{{ vertexCount() }} vértices (mín. 3)</span>
           <p-button
             data-testid="finish-polygon"
-            label="Finish shape"
+            label="Finalizar forma"
             size="small"
             [disabled]="!canFinishPolygon()"
             (onClick)="finishPolygon()"
           />
-          <p-button data-testid="cancel-drawing" label="Cancel" size="small" severity="secondary" (onClick)="cancelDrawing()" />
+          <p-button data-testid="cancel-drawing" label="Cancelar" size="small" severity="secondary" (onClick)="cancelDrawing()" />
         </div>
       }
 
       @if (mode() === 'circle') {
         <div class="flex items-center gap-2 text-sm">
           @if (hasCircleCenter()) {
-            <span>{{ circleRadiusMeters() | number: '1.0-0' }} m radius -- click to confirm</span>
+            <span>{{ circleRadiusMeters() | number: '1.0-0' }} m de radio -- clic para confirmar</span>
           } @else {
-            <span>Click the map to set the circle center</span>
+            <span>Haz clic en el mapa para fijar el centro del círculo</span>
           }
-          <p-button data-testid="cancel-drawing" label="Cancel" size="small" severity="secondary" (onClick)="cancelDrawing()" />
+          <p-button data-testid="cancel-drawing" label="Cancelar" size="small" severity="secondary" (onClick)="cancelDrawing()" />
         </div>
       }
 
       @if (mode() === 'idle' && hasDraft()) {
         <div class="flex items-center gap-2 text-sm">
-          <span>Shape ready to save</span>
-          <p-button data-testid="redraw" label="Redraw" size="small" severity="secondary" (onClick)="cancelDrawing()" />
+          <span>Forma lista para guardar</span>
+          <p-button data-testid="redraw" label="Rehacer" size="small" severity="secondary" (onClick)="cancelDrawing()" />
         </div>
       }
     </div>

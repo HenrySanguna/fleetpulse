@@ -6,6 +6,22 @@ import { AlertsService } from '../services/alerts.service';
 import { AlertsPageComponent } from './alerts-page.component';
 
 const NOW = Date.now();
+
+// Mirrors the template's `date: 'dd/MM/yyyy HH:mm'` pipe using the runtime's
+// own local timezone (via plain Date getters, same as DatePipe's default
+// timezone) instead of hardcoding an assumed UTC offset -- this repo
+// registers no LOCALE_ID/timezone anywhere (T4's own finding), so asserting
+// a fixed local-time string here would only pass on a machine/CI whose local
+// timezone happens to match the one this was written under.
+function formatLocal(iso: string): string {
+  const date = new Date(iso);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()} ${hours}:${minutes}`;
+}
+
 // Explicit, distinct, newest-first timestamps -- deterministic input for the
 // day-group sort, instead of three `new Date()` calls that could tie or
 // drift by a few ms depending on how fast the test runs.
@@ -18,6 +34,8 @@ const ALERTS: Alert[] = [
     detail: 'Entró en la geocerca "Puerto de Valencia"',
     occurredAt: new Date(NOW).toISOString(),
     acknowledged: false,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
   },
   {
     id: 'a2',
@@ -27,6 +45,8 @@ const ALERTS: Alert[] = [
     detail: '92 km/h en una zona con límite de 60 km/h',
     occurredAt: new Date(NOW - 60_000).toISOString(),
     acknowledged: false,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
   },
   {
     id: 'a3',
@@ -36,6 +56,8 @@ const ALERTS: Alert[] = [
     detail: '22 min detenido con el motor en marcha',
     occurredAt: new Date(NOW - 120_000).toISOString(),
     acknowledged: true,
+    acknowledgedAt: '2026-01-01T09:05:00.000Z',
+    acknowledgedBy: 'dispatcher@acme.test',
   },
 ];
 
@@ -72,7 +94,7 @@ describe('AlertsPageComponent', () => {
     const fixture = createFixture();
 
     const sub: HTMLElement = fixture.nativeElement.querySelector('.page-sub');
-    expect(sub.textContent).toContain('2 sin reconocer de 3');
+    expect(sub.textContent).toContain('2 sin atender de 3');
   });
 
   it('clicking a type filter chip narrows the rendered cards and marks it active', () => {
@@ -151,8 +173,13 @@ describe('AlertsPageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a3"]')).toBeNull();
   });
 
-  it('clicking the mark-as-attended button acknowledges that alert and replaces its tag', () => {
-    const acknowledged: Alert = { ...ALERTS[0], acknowledged: true };
+  it('clicking the mark-as-attended button acknowledges that alert and shows who/when', () => {
+    const acknowledged: Alert = {
+      ...ALERTS[0],
+      acknowledged: true,
+      acknowledgedAt: '2026-01-01T10:45:00.000Z',
+      acknowledgedBy: 'dispatcher@acme.test',
+    };
     alertsService.acknowledge.mockReturnValue(of(acknowledged));
     const fixture = createFixture();
 
@@ -163,6 +190,25 @@ describe('AlertsPageComponent', () => {
     expect(alertsService.acknowledge).toHaveBeenCalledWith('a1');
     expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a1"]')).toBeNull();
     const card = fixture.debugElement.query(By.css('[data-testid="alert-a1"]'));
-    expect(card.nativeElement.textContent).toContain('Reconocida');
+    expect(card.nativeElement.textContent).toContain('Atendida por dispatcher@acme.test');
+    expect(card.nativeElement.textContent).toContain(formatLocal('2026-01-01T10:45:00.000Z'));
+  });
+
+  it('shows just "Atendida" (no fabricated author/time) for a legacy alert acknowledged before the audit columns existed', () => {
+    const legacyAcknowledged: Alert = { ...ALERTS[1], acknowledged: true, acknowledgedAt: null, acknowledgedBy: null };
+    alertsService.list.mockReturnValue(of([legacyAcknowledged]));
+    const fixture = createFixture();
+
+    const card = fixture.debugElement.query(By.css('[data-testid="alert-a2"]'));
+    expect(card.nativeElement.textContent).toContain('Atendida');
+    expect(card.nativeElement.textContent).not.toContain('Atendida por');
+  });
+
+  it('shows the acknowledging dispatcher and formatted date/time for an already-acknowledged alert', () => {
+    const fixture = createFixture();
+
+    const card = fixture.debugElement.query(By.css('[data-testid="alert-a3"]'));
+    expect(card.nativeElement.textContent).toContain('Atendida por dispatcher@acme.test');
+    expect(card.nativeElement.textContent).toContain(formatLocal('2026-01-01T09:05:00.000Z'));
   });
 });

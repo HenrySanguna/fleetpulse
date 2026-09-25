@@ -57,7 +57,7 @@ describe('GeofenceService', () => {
 
     httpMock.expectOne('http://localhost:8099/api/geofences').flush('boom', { status: 500, statusText: 'Server Error' });
 
-    expect(store.error()).toBe('Failed to load geofences');
+    expect(store.error()).toBe('No se pudieron cargar las geocercas');
   });
 
   it('create() POSTs the request body as JSON and upserts the parsed response into the store', () => {

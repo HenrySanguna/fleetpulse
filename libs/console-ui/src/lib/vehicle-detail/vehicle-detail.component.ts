@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { Card } from 'primeng/card';
 import { Tag } from 'primeng/tag';
 import type { VehicleView } from '../models/vehicle-view.model';
@@ -16,14 +17,19 @@ import type { VehicleView } from '../models/vehicle-view.model';
 // momentary "still calculating" state from the dispatcher.
 export function formatEtaLabel(vehicle: VehicleView | undefined): string {
   if (!vehicle || vehicle.destinationLat === undefined || vehicle.destinationLon === undefined) {
-    return 'No destination assigned';
+    return 'Sin destino asignado';
   }
   if (vehicle.etaSeconds === undefined || vehicle.etaMarginSeconds === undefined) {
-    return 'Calculating…';
+    return 'Calculando…';
   }
   const minutes = Math.round(vehicle.etaSeconds / 60);
   const marginMinutes = Math.round(vehicle.etaMarginSeconds / 60);
-  return `~${minutes} min (± ${marginMinutes} min)`;
+  // Prod QA fix: rounding to exactly 0 read as "~0 min", implying the
+  // vehicle had already arrived -- "< 1 min" is honest about the estimate
+  // still being a duration, just below this label's own minute granularity.
+  const etaLabel = minutes === 0 ? '< 1 min' : `~${minutes} min`;
+  const marginLabel = marginMinutes === 0 ? '< 1 min' : `${marginMinutes} min`;
+  return `${etaLabel} (± ${marginLabel})`;
 }
 
 // Task 5.3: vehicle detail panel. Requirement "Separación entre posición
@@ -34,9 +40,15 @@ export function formatEtaLabel(vehicle: VehicleView | undefined): string {
 // (the real, un-interpolated map), never to the map's visual state, which is
 // what makes the separation hold end-to-end, not just at the data layer
 // WU4's own test already proved.
+const MOTION_STATE_LABEL: Record<'MOVING' | 'IDLING' | 'STOPPED', string> = {
+  MOVING: 'En movimiento',
+  IDLING: 'Ralentí',
+  STOPPED: 'Detenido',
+};
+
 @Component({
   selector: 'console-ui-vehicle-detail',
-  imports: [Card, Tag],
+  imports: [Card, Tag, DecimalPipe, DatePipe],
   templateUrl: './vehicle-detail.component.html',
   styleUrl: './vehicle-detail.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,4 +57,8 @@ export class VehicleDetailComponent {
   readonly vehicle = input<VehicleView | undefined>(undefined);
 
   protected readonly etaLabel = computed(() => formatEtaLabel(this.vehicle()));
+  protected readonly motionStateLabel = computed(() => {
+    const motionState = this.vehicle()?.motionState;
+    return motionState ? MOTION_STATE_LABEL[motionState] : 'Desconocido';
+  });
 }

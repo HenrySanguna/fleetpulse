@@ -281,7 +281,7 @@ describe('GeofenceEditorPageComponent', () => {
 
     clickButton(fixture, 'save-geofence');
 
-    expect(fixture.nativeElement.textContent).toContain('Failed to save the geofence');
+    expect(fixture.nativeElement.textContent).toContain('No se pudo guardar la geocerca');
     const nameInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="geofence-name-input"]');
     expect(nameInput.value).toBe('Depot');
   });
@@ -294,8 +294,8 @@ describe('GeofenceEditorPageComponent', () => {
 
     clickButton(fixture, 'save-geofence');
 
-    expect(fixture.nativeElement.textContent).toContain("You don't have permission to manage geofences.");
-    expect(fixture.nativeElement.textContent).not.toContain('Failed to save the geofence');
+    expect(fixture.nativeElement.textContent).toContain('No tienes permiso para gestionar geocercas.');
+    expect(fixture.nativeElement.textContent).not.toContain('No se pudo guardar la geocerca');
   });
 
   // Dispatcher UX: backend create/update/delete require FLEET_ADMIN
