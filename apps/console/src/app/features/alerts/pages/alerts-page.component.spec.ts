@@ -72,7 +72,7 @@ describe('AlertsPageComponent', () => {
     const fixture = createFixture();
 
     const sub: HTMLElement = fixture.nativeElement.querySelector('.page-sub');
-    expect(sub.textContent).toContain('2 sin reconocer de 3');
+    expect(sub.textContent).toContain('2 sin atender de 3');
   });
 
   it('clicking a type filter chip narrows the rendered cards and marks it active', () => {
@@ -163,6 +163,6 @@ describe('AlertsPageComponent', () => {
     expect(alertsService.acknowledge).toHaveBeenCalledWith('a1');
     expect(fixture.nativeElement.querySelector('[data-testid="alert-acknowledge-a1"]')).toBeNull();
     const card = fixture.debugElement.query(By.css('[data-testid="alert-a1"]'));
-    expect(card.nativeElement.textContent).toContain('Reconocida');
+    expect(card.nativeElement.textContent).toContain('Atendida');
   });
 });

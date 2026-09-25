@@ -31,7 +31,7 @@ describe('VehicleListComponent', () => {
     const fixture = render([]);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.textContent).toContain('No vehicles match the current filters.');
+    expect(fixture.nativeElement.textContent).toContain('Ningún vehículo coincide con los filtros actuales.');
   });
 
   // Task 5.2: list -> selection. The row only emits; it never calls
