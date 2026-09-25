@@ -1,11 +1,42 @@
 :host {
   display: block;
-  height: 100vh;
+  /* Was a hardcoded 100vh -- broke once the app shell's mobile top bar
+     (Prod QA T6) takes vertical space above this page, since a viewport
+     unit ignores it. Every sibling page component already uses 100% here;
+     this only brings live-map in line with them. */
+  height: 100%;
 }
 
 .sidebar {
   background: var(--fp-surface);
   border-right: 1px solid var(--fp-border);
+}
+
+/* Prod QA T6: below 768px the side panel stacks under the map instead of
+   squeezing it -- `order` keeps the map first without reordering the DOM
+   (list/detail still need to come after the map for a sighted user tabbing
+   through the page). The map keeps a fixed, usable height instead of
+   splitting the remaining flex space with the panel below it. */
+@media (max-width: 767.98px) {
+  .live-map-page {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar {
+    order: 2;
+    width: 100%;
+    border-right: none;
+    border-top: 1px solid var(--fp-border);
+  }
+
+  .map-pane {
+    order: 1;
+    /* Overrides the template's `flex-1` (flex: 1 1 0%): with a 0% basis the
+       map would keep growing to swallow whatever the sidebar doesn't use
+       instead of holding a fixed, usable height. `0 0 58vh` pins it. */
+    flex: 0 0 58vh;
+  }
 }
 
 .sidebar-section {
