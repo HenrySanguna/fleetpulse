@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { map } from 'rxjs';
+import { map, tap } from 'rxjs';
 import { NgTemplateOutlet } from '@angular/common';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Drawer } from 'primeng/drawer';
@@ -52,13 +52,22 @@ export class AppShellComponent {
   // instead of a permanent column (design.md's mobile finding: the rail ate
   // fixed horizontal space on phone widths). `isMatched(...)` seeds the
   // signal with the real synchronous value instead of a placeholder that
-  // would briefly render the wrong branch on first paint.
+  // would briefly render the wrong branch on first paint. Leaving the mobile
+  // breakpoint closes the drawer, so shrinking back never re-opens it
+  // unasked.
+  protected readonly mobileNavOpen = signal(false);
+
   protected readonly isMobile = toSignal(
-    this.breakpointObserver.observe(MOBILE_QUERY).pipe(map((state) => state.matches)),
+    this.breakpointObserver.observe(MOBILE_QUERY).pipe(
+      map((state) => state.matches),
+      tap((matches) => {
+        if (!matches) {
+          this.mobileNavOpen.set(false);
+        }
+      }),
+    ),
     { initialValue: this.breakpointObserver.isMatched(MOBILE_QUERY) },
   );
-
-  protected readonly mobileNavOpen = signal(false);
 
   protected readonly initials = computed(() => {
     const localPart = this.dispatcher()?.email?.split('@')[0];

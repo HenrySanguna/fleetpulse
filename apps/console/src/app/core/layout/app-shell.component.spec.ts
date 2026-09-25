@@ -29,17 +29,29 @@ function click(fixture: ComponentFixture<AppShellComponent>, testId: string): vo
 // silently falls back to a no-op that always reports "not matching" (i.e.
 // always desktop). Fakes `addListener`/`removeListener` (the legacy API
 // @angular/cdk/layout actually calls), not `addEventListener`.
+const originalMatchMedia = window.matchMedia;
+let mediaListeners: ((event: { matches: boolean }) => void)[] = [];
+
 function stubMatchMedia(matches: boolean): void {
+  mediaListeners = [];
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches,
     media: query,
     onchange: null,
-    addListener: vi.fn(),
+    addListener: vi.fn((listener: (event: { matches: boolean }) => void) => mediaListeners.push(listener)),
     removeListener: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+}
+
+// Simulates a viewport resize crossing the breakpoint; BreakpointObserver
+// debounces later emissions, hence the macrotask wait.
+async function changeViewport(fixture: ComponentFixture<AppShellComponent>, matches: boolean): Promise<void> {
+  mediaListeners.forEach((listener) => listener({ matches }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  fixture.detectChanges();
 }
 
 describe('AppShellComponent', () => {
@@ -76,7 +88,7 @@ describe('AppShellComponent', () => {
   });
 
   afterEach(() => {
-    delete (window as { matchMedia?: unknown }).matchMedia;
+    window.matchMedia = originalMatchMedia;
   });
 
   function createFixture(): ComponentFixture<AppShellComponent> {
@@ -199,6 +211,31 @@ describe('AppShellComponent', () => {
       click(fixture, 'mobile-nav-toggle');
 
       click(fixture, 'nav-geofences');
+
+      const drawer = fixture.debugElement.query(By.directive(Drawer))?.componentInstance as Drawer | undefined;
+      expect(drawer?.visible).toBe(false);
+    });
+
+    it('switches between the drawer and the static rail when the viewport crosses the breakpoint', async () => {
+      stubMatchMedia(true);
+      const fixture = createFixture();
+      const compiled = fixture.nativeElement as HTMLElement;
+
+      await changeViewport(fixture, false);
+      expect(compiled.querySelector('[data-testid="mobile-nav-toggle"]')).toBeNull();
+      expect(compiled.querySelector('nav.rail')).not.toBeNull();
+
+      await changeViewport(fixture, true);
+      expect(compiled.querySelector('[data-testid="mobile-nav-toggle"]')).not.toBeNull();
+    });
+
+    it('does not re-open the drawer after widening past the breakpoint and shrinking back', async () => {
+      stubMatchMedia(true);
+      const fixture = createFixture();
+      click(fixture, 'mobile-nav-toggle');
+
+      await changeViewport(fixture, false);
+      await changeViewport(fixture, true);
 
       const drawer = fixture.debugElement.query(By.directive(Drawer))?.componentInstance as Drawer | undefined;
       expect(drawer?.visible).toBe(false);
