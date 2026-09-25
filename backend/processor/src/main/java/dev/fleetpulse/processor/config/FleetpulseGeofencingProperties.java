@@ -19,6 +19,14 @@ import java.time.Duration;
 public record FleetpulseGeofencingProperties(
     @DefaultValue("3") int confirmationReadings,
     @DefaultValue("30s") Duration confirmationDuration,
-    @DefaultValue("15") double exitBufferMeters
+    @DefaultValue("15") double exitBufferMeters,
+    // T8 (prod-qa-findings): GeofenceRuleDispatcher's own silence window, the
+    // same AlertSilenceEngine pattern FleetpulseAlertingProperties.silenceWindow
+    // already applies to speeding/excessive-idle -- see GeofenceRuleDispatcher's
+    // class comment for why a geofence alert (an event, not a continuous
+    // condition) uses that engine differently. A separate property, not a
+    // shared one: geofence oscillation and sustained-condition re-notification
+    // are different tuning concerns with no reason to share a default.
+    @DefaultValue("10m") Duration silenceWindow
 ) {
 }

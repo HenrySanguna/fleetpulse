@@ -344,7 +344,7 @@ class GeofenceEndToEndScenarioTest {
         ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(bufferMaxSize, flushInterval));
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
         ctx.registerBean(FleetpulseGeofencingProperties.class,
-            () -> new FleetpulseGeofencingProperties(confirmationReadings, confirmationDuration, 15.0));
+            () -> new FleetpulseGeofencingProperties(confirmationReadings, confirmationDuration, 15.0, Duration.ofMinutes(10)));
         // Task 2.4 (06-add-trips-eta-alerts, WU2): no destinations are ever
         // assigned by this test -- see GeofenceAlertEndToEndTest's identical
         // registration for the full reasoning.

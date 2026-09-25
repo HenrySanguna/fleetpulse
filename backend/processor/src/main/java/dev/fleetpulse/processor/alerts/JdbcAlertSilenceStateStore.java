@@ -53,6 +53,11 @@ public class JdbcAlertSilenceStateStore {
         WHERE vehicle_id = ANY (?) AND alert_type = ANY (?) AND context = ?
         """;
 
+    private static final String SELECT_BULK_BY_VEHICLE_AND_TYPE_SQL = """
+        SELECT vehicle_id, alert_type, context, is_active, last_alert_at FROM alert_silence_state
+        WHERE vehicle_id = ANY (?) AND alert_type = ANY (?)
+        """;
+
     private static final String UPSERT_SQL = """
         INSERT INTO alert_silence_state (vehicle_id, alert_type, context, is_active, last_alert_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -90,6 +95,41 @@ public class JdbcAlertSilenceStateStore {
                     UUID vehicleId = (UUID) rs.getObject("vehicle_id");
                     AlertType type = AlertType.valueOf(rs.getString("alert_type").toUpperCase(Locale.ROOT));
                     states.put(new AlertSilenceKey(vehicleId, type, null), toState(rs));
+                }
+                return states;
+            }
+        );
+    }
+
+    // GeofenceRuleDispatcher's own bulk load: geofence alert types
+    // (GEOFENCE_ENTER/EXIT/DWELL) carry a real per-geofence context, unlike
+    // loadBulk() above (always NO_CONTEXT). Which geofences are relevant to
+    // a batch is only known after per-message containment evaluation, so
+    // this loads by (vehicleIds, types) alone, unfiltered by context: a
+    // vehicle's own alert_silence_state rows for these types are naturally
+    // bounded by how many geofences it has ever alerted against, and
+    // alert_type = ANY(geofence types) never matches a vehicle-level row
+    // (those are always stored under NO_CONTEXT).
+    public Map<AlertSilenceKey, AlertSilenceState> loadBulkByVehicleAndType(Set<UUID> vehicleIds, List<AlertType> types) {
+        if (vehicleIds.isEmpty() || types.isEmpty()) {
+            return Map.of();
+        }
+        return jdbcTemplate.query(
+            SELECT_BULK_BY_VEHICLE_AND_TYPE_SQL,
+            ps -> {
+                Array vehicleIdArray = ps.getConnection().createArrayOf("uuid", vehicleIds.toArray());
+                ps.setArray(1, vehicleIdArray);
+                Array typeArray = ps.getConnection().createArrayOf("varchar", types.stream().map(AlertType::wireValue).toArray());
+                ps.setArray(2, typeArray);
+            },
+            rs -> {
+                Map<AlertSilenceKey, AlertSilenceState> states = new HashMap<>();
+                while (rs.next()) {
+                    UUID vehicleId = (UUID) rs.getObject("vehicle_id");
+                    AlertType type = AlertType.valueOf(rs.getString("alert_type").toUpperCase(Locale.ROOT));
+                    String contextValue = rs.getString("context");
+                    UUID context = contextValue.isEmpty() ? null : UUID.fromString(contextValue);
+                    states.put(new AlertSilenceKey(vehicleId, type, context), toState(rs));
                 }
                 return states;
             }

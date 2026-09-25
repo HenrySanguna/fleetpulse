@@ -215,7 +215,8 @@ class AlertRuleEndToEndTest {
         // ever seeded and no destination ever assigned, so both are wired
         // with no-op publishers, mirroring GeofenceAlertEndToEndTest's own
         // identical reasoning for the reverse case.
-        ctx.registerBean(FleetpulseGeofencingProperties.class, () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0));
+        ctx.registerBean(FleetpulseGeofencingProperties.class,
+            () -> new FleetpulseGeofencingProperties(3, Duration.ofSeconds(30), 15.0, Duration.ofMinutes(10)));
         ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
         ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
         ctx.registerBean(FleetpulseAlertingProperties.class,

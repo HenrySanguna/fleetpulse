@@ -1,7 +1,5 @@
 package dev.fleetpulse.processor.geofencing;
 
-import dev.fleetpulse.geocore.Geo;
-import dev.fleetpulse.geocore.GeoPoint;
 import dev.fleetpulse.processor.alerts.AlertPublisher;
 import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
 import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
@@ -59,26 +57,33 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-// Tests 6.3, 6.4 and both DoD "ruido realista" / damping items, wired
-// through the same real dual-container (PostGIS + Mosquitto) pipeline
-// GeofenceAlertEndToEndTest (WU4) established. Kept in its own file,
-// separate from GeofenceEndToEndScenarioTest's rule/dwell/restart
-// scenarios: the noise-generation machinery below is a self-contained
-// concern, the same "one concern per dual-container file" split
-// TelemetryEndToEndIngestTest (WU5) and PresenceEndToEndTest (WU8) already
-// established in change 03.
+// T8 (prod-qa-findings, "geofence alert silence window"): the dedicated
+// end-to-end proof that GeofenceRuleDispatcher's new silence layer actually
+// stops the alert-inbox flood, through the real dual-container (PostGIS +
+// Mosquitto) pipeline GeofenceEndToEndScenarioTest/GeofenceOscillationEndToEndTest
+// already established. Kept in its own file, same "one concern per
+// dual-container file" convention: GeofenceOscillationEndToEndTest proves the
+// EXISTING hysteresis layer (confirmation/exit buffering) damps GPS jitter
+// into a stable membership transition in the first place; this file proves
+// the SEPARATE, second layer added on top of it -- once genuine, CONFIRMED
+// transitions still repeat (a vehicle truly parking right at a boundary),
+// only the first of a burst within the window is notified, and the window
+// re-arms afterwards. confirmationReadings=1/confirmationDuration=ZERO below
+// (the same "instant confirmation" profile GeofenceEndToEndScenarioTest's own
+// 6.1 test uses) deliberately removes the hysteresis layer's OWN damping from
+// this test, so every alternating inside/outside reading is a genuinely
+// confirmed transition and the silencing this test asserts is never
+// incidentally helped along by confirmation delay.
 @Testcontainers
-class GeofenceOscillationEndToEndTest {
+class GeofenceAlertSilenceEndToEndTest {
 
     private static final Path POSTGIS_PARTMAN_DOCKERFILE = Path
         .of(System.getProperty("user.dir"), "..", "..", "docker", "postgis-partman", "Dockerfile")
@@ -103,35 +108,17 @@ class GeofenceOscillationEndToEndTest {
 
     private static final double GEOFENCE_LAT = 4.71;
     private static final double CENTER_LON = -74.07;
-    private static final double HALF_WIDTH_DEG = 0.003;
+    private static final double HALF_WIDTH_DEG = 0.005;
+    private static final double INSIDE_LON = CENTER_LON;
+    // Well outside both the square and its (unused here, confirmationReadings=1
+    // makes the buffer irrelevant to entering) exit buffer -- same 0.02 deg
+    // scale GeofenceEndToEndScenarioTest's own crossing test uses.
+    private static final double OUTSIDE_LON = CENTER_LON - 0.02;
+
+    // T8's own production default (FleetpulseGeofencingProperties.silenceWindow).
+    private static final Duration SILENCE_WINDOW = Duration.ofMinutes(10);
 
     private static final String TOPIC_ORG_SEGMENT = "org-1";
-
-    // Production defaults (FleetpulseGeofencingProperties): the DoD requires
-    // this proof against realistic confirmation/buffer settings, not values
-    // loosened just to make the test trivially pass.
-    private static final int CONFIRMATION_READINGS = 3;
-    private static final Duration CONFIRMATION_DURATION = Duration.ofSeconds(30);
-    private static final double EXIT_BUFFER_METERS = 15.0;
-    // T8's own production default: this test's trace produces exactly one
-    // confirmed transition, so the silence window never gets a chance to
-    // suppress anything here -- GeofenceAlertSilenceEndToEndTest is
-    // the dedicated proof for the silencing behavior itself.
-    private static final Duration GEOFENCE_SILENCE_WINDOW = Duration.ofMinutes(10);
-
-    // DoD "ruido realista": a fixed seed so this specific trace is
-    // reproducible across runs -- not re-rolled every build -- while its
-    // per-reading offsets are still genuine Gaussian noise
-    // (java.util.Random#nextGaussian, Box-Muller), not a hand-picked
-    // sequence of values.
-    private static final long JITTER_SEED = 20260914L;
-    private static final double JITTER_FLOOR_METERS = 1.0;
-    private static final double JITTER_STDDEV_METERS = 4.0;
-    private static final int NOISE_PHASE_POINT_COUNT = 24;
-    // Strictly below CONFIRMATION_READINGS. See boundaryJitterTrace()'s own
-    // comment for why this cap is itself a realistic property of GPS noise
-    // near a fixed point, not an artificial shortcut.
-    private static final int MAX_SAME_SIDE_RUN = 2;
 
     private AnnotationConfigApplicationContext context;
     private MqttClient devicePublisher;
@@ -156,124 +143,145 @@ class GeofenceOscillationEndToEndTest {
         }
     }
 
-    // Tests 6.3 + 6.4 + both DoD items share one continuous trace, the same
-    // way spec.md itself frames the two scenarios: "el mismo vehiculo, tras
-    // un periodo de lecturas oscilantes ... se adentra de forma sostenida."
-    // Phase 1 (6.3, DoD "ruido realista"): a statistically modeled GPS
-    // jitter trace straddling the geofence's west edge -- must confirm
-    // nothing. A single clearly-outside reading then resets any lingering
-    // pending streak to a known baseline (task 3.2), the same way a real
-    // vehicle pulling a few meters further back before actually driving in
-    // would. Phase 2 (6.4): a real, sustained entry -- must confirm exactly
-    // once, proving the noise phase never left a dangling confirmed or
-    // already-alerted state behind.
+    // One continuous timeline, all timestamps application-level (each
+    // message's own recordedAt), not real sleep -- the same technique every
+    // dual-container test in this package already uses to simulate minutes
+    // of elapsed time in seconds of real test run time. Two geofences over
+    // the SAME square (one on_enter, one on_exit, GeofenceEndToEndScenarioTest's
+    // own 6.1 setup) so both GEOFENCE_ENTER and GEOFENCE_EXIT silencing are
+    // proven, on independent (vehicle, geofence, type) keys.
     @Test
-    void aRealisticGpsDriftTraceNeverConfirmsButASustainedEntryAfterwardDoes() throws Exception {
+    void oscillationWithinTheWindowIsSilencedAndReEntryAfterItElapsesFiresAgain() throws Exception {
         migrate();
         context = startContext();
-        UUID organizationId = insertOrganization("Acme Oscillation Org");
-        UUID vehicleId = insertVehicle(organizationId, "Truck-WU5-Oscillation");
-        UUID geofenceId = insertSquareGeofence(organizationId, "Boundary Depot", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_enter", null);
+        UUID organizationId = insertOrganization("Acme Silence Org");
+        UUID vehicleId = insertVehicle(organizationId, "Truck-T8-Silence");
+        UUID enterGeofenceId = insertSquareGeofence(organizationId, "Silence Depot Enter", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_enter", null);
+        UUID exitGeofenceId = insertSquareGeofence(organizationId, "Silence Depot Exit", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_exit", null);
 
         connectDevicePublisher();
-        warmUpUntilSubscribed();
+        warmUpUntilSubscribed(1);
         List<String> receivedAlerts = subscribeToAlerts(organizationId);
 
-        double metersPerDegreeLon = 111_320.0 * Math.cos(Math.toRadians(GEOFENCE_LAT));
-        double boundaryLon = CENTER_LON - HALF_WIDTH_DEG;
+        Instant t0 = Instant.now();
 
-        List<double[]> trace = new ArrayList<>(boundaryJitterTrace(boundaryLon, metersPerDegreeLon, NOISE_PHASE_POINT_COUNT));
-        // Reset: a single reading well clear of the boundary (and of the
-        // 15 m exit buffer) so phase 2 below starts its own confirmation
-        // streak from zero, independent of wherever phase 1's tail happened
-        // to leave its own pending streak.
-        trace.add(new double[] {GEOFENCE_LAT, boundaryLon + metersToDegreesLon(-50.0, metersPerDegreeLon)});
-        // Phase 2: a real, sustained entry -- solidly inside the square,
-        // well past both the strict boundary and the buffer.
-        for (int i = 0; i < CONFIRMATION_READINGS; i++) {
-            trace.add(new double[] {GEOFENCE_LAT, boundaryLon + metersToDegreesLon(200.0, metersPerDegreeLon)});
-        }
-
-        Instant cursor = Instant.now();
-        Double prevLat = null;
-        Double prevLon = null;
-        int expectedPositions = 0;
-        for (int i = 0; i < trace.size(); i++) {
-            double[] point = trace.get(i);
-            if (prevLat != null) {
-                double distanceMeters = Geo.distanceMeters(
-                    new GeoPoint(prevLat, prevLon, Instant.EPOCH), new GeoPoint(point[0], point[1], Instant.EPOCH)
-                );
-                cursor = cursor.plusSeconds(Math.max(2, (long) Math.ceil(distanceMeters / 40.0)));
-            }
-            publishTelemetry(vehicleId, telemetryPayload(cursor, point[0], point[1]));
-            expectedPositions++;
-            int expected = expectedPositions;
-            await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= expected);
-            prevLat = point[0];
-            prevLon = point[1];
-
-            if (i == NOISE_PHASE_POINT_COUNT - 1) {
-                // End of phase 1 (6.3 / DoD "ruido realista"): the trace
-                // above crossed the boundary line by construction (its
-                // generator alternates sides) dozens of times and must have
-                // confirmed nothing.
-                assertThat(countAlerts(vehicleId, geofenceId, "enter")).isZero();
-                assertThat(Boolean.TRUE.equals(readIsInside(vehicleId, geofenceId))).isFalse();
-            }
-        }
-
-        // 6.4: the sustained entry after the reset point confirms exactly once.
+        // t0: ENTER #1 -- the very first alert of this key, always fires.
+        publishAndAwaitPosition(vehicleId, t0, GEOFENCE_LAT, INSIDE_LON, 1);
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
-            assertThat(countAlerts(vehicleId, geofenceId, "enter")).isEqualTo(1));
+            assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(1));
+
+        // t0+60s: EXIT #1 -- the first alert of THIS OTHER key, always fires.
+        // (60s, not less: 2.2km/60s keeps the implied speed comfortably
+        // under FleetpulseTelemetryImplausibilityProperties' 300 km/h cap.)
+        publishAndAwaitPosition(vehicleId, t0.plusSeconds(60), GEOFENCE_LAT, OUTSIDE_LON, 2);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(1));
+
+        // t0+3min and t0+6min: the vehicle oscillates back in and out, well
+        // within SILENCE_WINDOW of each key's own last alert -- both
+        // confirmed transitions (this is instant-confirmation, so both
+        // really do flip membership and reach GeofenceRuleEngine's
+        // firedAlerts()) but neither is notified again. Awaited via each
+        // key's OWN alert_silence_state row (written once GeofenceRuleDispatcher
+        // finishes the message that touched it -- see that class's own
+        // comment) instead of a blind sleep: its updated_at moves forward
+        // even when the alert itself is suppressed, so seeing it move is a
+        // positive signal that this message's dispatch, including any
+        // wrongly-unsuppressed alert write, has already happened.
+        Instant enterSilenceUpdatedBeforeOscillation = silenceStateUpdatedAt(vehicleId, enterGeofenceId, "enter");
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(3)), GEOFENCE_LAT, INSIDE_LON, 3);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(silenceStateUpdatedAt(vehicleId, enterGeofenceId, "enter")).isAfter(enterSilenceUpdatedBeforeOscillation));
+
+        Instant exitSilenceUpdatedBeforeOscillation = silenceStateUpdatedAt(vehicleId, exitGeofenceId, "exit");
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(6)), GEOFENCE_LAT, OUTSIDE_LON, 4);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(silenceStateUpdatedAt(vehicleId, exitGeofenceId, "exit")).isAfter(exitSilenceUpdatedBeforeOscillation));
+
+        assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(1);
+        assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(1);
+        assertThat(countAlerts(vehicleId)).isEqualTo(2);
+        assertThat(receivedAlerts).hasSize(2);
+
+        // t0+11min: past ENTER's own SILENCE_WINDOW (from t0) -- fires again.
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(11)), GEOFENCE_LAT, INSIDE_LON, 5);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(2));
+
+        // t0+16min: past EXIT's own SILENCE_WINDOW (from t0+60s) -- fires again.
+        publishAndAwaitPosition(vehicleId, t0.plus(Duration.ofMinutes(16)), GEOFENCE_LAT, OUTSIDE_LON, 6);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(2));
+        // receivedAlerts is filled by the MQTT subscriber's own async
+        // callback, not by the DB write the assertion above already
+        // awaited -- await its own positive signal too, instead of a blind
+        // sleep, before asserting the exact final counts below.
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(receivedAlerts).hasSize(4));
+
+        assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(2);
+        assertThat(countAlerts(vehicleId, exitGeofenceId, "exit")).isEqualTo(2);
+        assertThat(countAlerts(vehicleId)).isEqualTo(4);
+    }
+
+    // T8 review finding: several fired alerts for the SAME key can fall
+    // inside ONE evaluateAndDispatch batch, not just across separate
+    // flushes like the test above -- this class's own class-level comment
+    // documents that the in-memory silenceStates map, not a DB re-read, is
+    // what chains those occurrences within a single call. maxSize=3 (a
+    // long flushInterval so its own periodic trigger never fires first)
+    // forces all three positions below into the SAME
+    // TelemetryPositionBuffer flush, hence the SAME writeBatch call, hence
+    // the SAME GeofenceRuleDispatcher.evaluateAndDispatch call.
+    @Test
+    void severalFiredAlertsForTheSameKeyWithinOneBatchOnlyEmitTheFirst() throws Exception {
+        migrate();
+        context = startContext(3, Duration.ofSeconds(30));
+        UUID organizationId = insertOrganization("Acme Silence Batch Org");
+        UUID vehicleId = insertVehicle(organizationId, "Truck-T8-Silence-Batch");
+        UUID enterGeofenceId =
+            insertSquareGeofence(organizationId, "Silence Batch Depot Enter", CENTER_LON, GEOFENCE_LAT, HALF_WIDTH_DEG, "on_enter", null);
+
+        connectDevicePublisher();
+        warmUpUntilSubscribed(3);
+        List<String> receivedAlerts = subscribeToAlerts(organizationId);
+
+        Instant t0 = Instant.now();
+        // ENTER, EXIT (on_enter never alerts on exit, so this one is silent),
+        // ENTER again -- published back to back with no await in between,
+        // so all three land in the buffer before its maxSize=3 triggers the
+        // one flush. Both ENTER occurrences are genuinely confirmed
+        // transitions (instant confirmation, same profile as the test
+        // above) and well within SILENCE_WINDOW of each other.
+        publishTelemetry(vehicleId, telemetryPayload(t0, GEOFENCE_LAT, INSIDE_LON));
+        publishTelemetry(vehicleId, telemetryPayload(t0.plusSeconds(60), GEOFENCE_LAT, OUTSIDE_LON));
+        publishTelemetry(vehicleId, telemetryPayload(t0.plusSeconds(120), GEOFENCE_LAT, INSIDE_LON));
+
+        await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= 3);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+            assertThat(countAlerts(vehicleId, enterGeofenceId, "enter")).isEqualTo(1));
+        // receivedAlerts is filled by the MQTT subscriber's own async
+        // callback, a separate signal from the DB write already awaited
+        // above -- await it too before asserting the final exact counts.
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(receivedAlerts).hasSize(1));
-        Thread.sleep(500);
 
-        assertThat(countAlerts(vehicleId, geofenceId, "enter")).isEqualTo(1);
-        assertThat(receivedAlerts).hasSize(1);
-        assertThat(readIsInside(vehicleId, geofenceId)).isTrue();
+        assertThat(countAlerts(vehicleId)).isEqualTo(1);
     }
 
-    // DoD "ruido realista": a per-reading offset drawn from a Gaussian
-    // magnitude (variable per point, never a fixed hand-picked amplitude)
-    // around the geofence's west edge, with the side flipped only when it
-    // would otherwise create a same-side run longer than MAX_SAME_SIDE_RUN.
-    // That cap is not an artificial shortcut to make the test pass: a
-    // stationary receiver's successive raw fixes are serially correlated by
-    // multipath and satellite-geometry drift rather than independent coin
-    // flips, so a bounded run length is itself a realistic property of GPS
-    // noise -- and it is also exactly what keeps this test deterministic
-    // regardless of the seed's exact draws, instead of leaving a
-    // CONFIRMATION_READINGS-length run to chance across two dozen readings.
-    // lat is held fixed: this models a parked vehicle, and the boundary
-    // under test is a single line of constant longitude (the square's west
-    // edge), the same fixture shape insertSquareGeofence uses everywhere
-    // else in this package.
-    private static List<double[]> boundaryJitterTrace(double boundaryLon, double metersPerDegreeLon, int pointCount) {
-        Random random = new Random(JITTER_SEED);
-        List<double[]> points = new ArrayList<>(pointCount);
-        Boolean lastInside = null;
-        int sameSideRun = 0;
-        for (int i = 0; i < pointCount; i++) {
-            double magnitudeMeters = JITTER_FLOOR_METERS + Math.abs(random.nextGaussian()) * JITTER_STDDEV_METERS;
-            boolean inside = random.nextBoolean();
-            if (lastInside != null && inside == lastInside && sameSideRun >= MAX_SAME_SIDE_RUN) {
-                inside = !lastInside;
-            }
-            double signedOffsetMeters = inside ? magnitudeMeters : -magnitudeMeters;
-            double lon = boundaryLon + metersToDegreesLon(signedOffsetMeters, metersPerDegreeLon);
-            points.add(new double[] {GEOFENCE_LAT, lon});
-            sameSideRun = (lastInside != null && inside == lastInside) ? sameSideRun + 1 : 1;
-            lastInside = inside;
-        }
-        return points;
-    }
-
-    private static double metersToDegreesLon(double meters, double metersPerDegreeLon) {
-        return meters / metersPerDegreeLon;
+    private void publishAndAwaitPosition(UUID vehicleId, Instant recordedAt, double lat, double lon, int expectedPositionCount) throws Exception {
+        publishTelemetry(vehicleId, telemetryPayload(recordedAt, lat, lon));
+        await().atMost(Duration.ofSeconds(20)).until(() -> countPositions(vehicleId) >= expectedPositionCount);
     }
 
     private AnnotationConfigApplicationContext startContext() {
+        return startContext(1, Duration.ofMillis(100));
+    }
+
+    // bufferMaxSize/bufferFlushInterval parameterized so
+    // severalFiredAlertsForTheSameKeyWithinOneBatchOnlyEmitTheFirst() can
+    // force several messages into the SAME TelemetryPositionBuffer flush
+    // (and therefore the same GeofenceRuleDispatcher.evaluateAndDispatch
+    // call) instead of this class's own default of one message per flush.
+    private AnnotationConfigApplicationContext startContext(int bufferMaxSize, Duration bufferFlushInterval) {
         AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
         ctx.registerBean(FleetpulseMqttProperties.class, () -> new FleetpulseMqttProperties(brokerUrl()));
         ctx.registerBean(FleetpulseMqttServiceCredentialsProperties.class, () -> new FleetpulseMqttServiceCredentialsProperties(
@@ -281,18 +289,19 @@ class GeofenceOscillationEndToEndTest {
         ));
         ctx.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         ctx.registerBean(FleetpulseTelemetryImplausibilityProperties.class, () -> new FleetpulseTelemetryImplausibilityProperties(300.0));
-        ctx.registerBean(FleetpulseTelemetryBufferProperties.class, () -> new FleetpulseTelemetryBufferProperties(1, Duration.ofMillis(100)));
+        ctx.registerBean(FleetpulseTelemetryBufferProperties.class,
+            () -> new FleetpulseTelemetryBufferProperties(bufferMaxSize, bufferFlushInterval));
         ctx.registerBean(FleetpulseMotionDetectionProperties.class, () -> new FleetpulseMotionDetectionProperties(5.0, 12.0, Duration.ofSeconds(30)));
+        // confirmationReadings=1/confirmationDuration=ZERO: see this class's
+        // own comment for why instant confirmation isolates the silence
+        // layer under test from the unrelated hysteresis layer.
         ctx.registerBean(FleetpulseGeofencingProperties.class,
-            () -> new FleetpulseGeofencingProperties(CONFIRMATION_READINGS, CONFIRMATION_DURATION, EXIT_BUFFER_METERS, GEOFENCE_SILENCE_WINDOW));
-        // Task 2.4 (06-add-trips-eta-alerts, WU2): no destinations are ever
-        // assigned by this test -- see GeofenceAlertEndToEndTest's identical
-        // registration for the full reasoning.
+            () -> new FleetpulseGeofencingProperties(1, Duration.ZERO, 15.0, SILENCE_WINDOW));
         ctx.registerBean(FleetpulseEtaProperties.class, () -> new FleetpulseEtaProperties(1.3, 0.3, 5.0, 30.0, Duration.ofMinutes(15)));
         ctx.registerBean(EtaPublisher.class, () -> (organizationId, vehicleId, estimate, calculatedAt) -> { });
-        // Task 3.2/WU3: this test proves geofence oscillation damping, not
-        // speeding/excessive-idle alerting -- same "no-op publisher, real
-        // writer/silence-state store" reasoning as GeofenceAlertEndToEndTest.
+        // This test proves geofence alert silencing, not speeding/excessive-idle
+        // -- same no-op AlertPublisher, real writer/silence-state store
+        // reasoning as GeofenceOscillationEndToEndTest.
         ctx.registerBean(FleetpulseAlertingProperties.class,
             () -> new FleetpulseAlertingProperties(100.0, Duration.ofMinutes(10), Duration.ofMinutes(15)));
         ctx.registerBean(AlertPublisher.class, () -> alert -> { });
@@ -350,12 +359,22 @@ class GeofenceOscillationEndToEndTest {
         return received;
     }
 
-    private void warmUpUntilSubscribed() throws Exception {
+    // Same technique GeofenceAlertEndToEndTest/GeofenceEndToEndScenarioTest
+    // established: publish a throwaway decoy on a never-asserted-against
+    // vehicle until the subscription is confirmed active, then discard it.
+    // bufferMaxSize decoys per attempt, not one, so this also warms up a
+    // context started with a buffer maxSize > 1 (severalFiredAlertsFor...
+    // below): with a single decoy, a bigger buffer would only ever flush on
+    // its own flushInterval, not on this method's own short per-attempt
+    // await.
+    private void warmUpUntilSubscribed(int bufferMaxSize) throws Exception {
         UUID warmupOrganizationId = insertOrganization("Warmup Org " + UUID.randomUUID());
         UUID warmupVehicleId = insertVehicle(warmupOrganizationId, "Warmup Vehicle");
         Instant warmupRecordedAt = Instant.now().minusSeconds(7200);
         for (int attempt = 1; attempt <= 10; attempt++) {
-            publishTelemetry(warmupVehicleId, telemetryPayload(warmupRecordedAt, DECOY_LAT, DECOY_LON));
+            for (int i = 0; i < bufferMaxSize; i++) {
+                publishTelemetry(warmupVehicleId, telemetryPayload(warmupRecordedAt, DECOY_LAT, DECOY_LON));
+            }
             try {
                 await().atMost(Duration.ofSeconds(2)).until(() -> countPositions(warmupVehicleId) >= 1);
                 deletePositions(warmupVehicleId);
@@ -398,6 +417,33 @@ class GeofenceOscillationEndToEndTest {
         }
     }
 
+    // Positive signal for "this message's own GeofenceRuleDispatcher
+    // dispatch, including any wrongly-unsuppressed alert write, has already
+    // happened" -- see GeofenceRuleDispatcher's own class comment:
+    // writeBulk() for a message's mutated keys runs only after that
+    // message's alerts/fence-state are already written and published, so
+    // this row's updated_at moving forward proves the whole message is
+    // done, not just that its position landed.
+    private static Instant silenceStateUpdatedAt(UUID vehicleId, UUID geofenceId, String alertType) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement(
+                "SELECT updated_at FROM alert_silence_state WHERE vehicle_id = ? AND alert_type = ? AND context = ?"
+            )
+        ) {
+            statement.setObject(1, vehicleId);
+            statement.setString(2, "geofence_" + alertType);
+            statement.setString(3, geofenceId.toString());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return null;
+                }
+                Timestamp updatedAt = resultSet.getTimestamp("updated_at");
+                return updatedAt == null ? null : updatedAt.toInstant();
+            }
+        }
+    }
+
     private static void deletePositions(UUID vehicleId) throws SQLException {
         try (
             Connection connection = connect();
@@ -408,9 +454,6 @@ class GeofenceOscillationEndToEndTest {
         }
     }
 
-    // Retargeted at the unified `alerts` table (06-add-trips-eta-alerts/WU3,
-    // task 3.1) -- see GeofenceAlertEndToEndTest's identical helper for the
-    // full reasoning.
     private static int countAlerts(UUID vehicleId, UUID geofenceId, String alertType) throws SQLException {
         try (
             Connection connection = connect();
@@ -428,20 +471,15 @@ class GeofenceOscillationEndToEndTest {
         }
     }
 
-    private static Boolean readIsInside(UUID vehicleId, UUID geofenceId) throws SQLException {
+    private static int countAlerts(UUID vehicleId) throws SQLException {
         try (
             Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "SELECT is_inside FROM vehicle_fence_state WHERE vehicle_id = ? AND geofence_id = ?"
-            )
+            PreparedStatement statement = connection.prepareStatement("SELECT count(*) FROM alerts WHERE vehicle_id = ?")
         ) {
             statement.setObject(1, vehicleId);
-            statement.setObject(2, geofenceId);
             try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    return null;
-                }
-                return resultSet.getBoolean("is_inside");
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getInt(1);
             }
         }
     }

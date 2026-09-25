@@ -3,6 +3,12 @@ package dev.fleetpulse.processor.geofencing;
 import dev.fleetpulse.geocore.FenceMembershipConfig;
 import dev.fleetpulse.geocore.FenceMembershipSample;
 import dev.fleetpulse.geocore.FenceMembershipState;
+import dev.fleetpulse.processor.alerts.AlertSilenceDecision;
+import dev.fleetpulse.processor.alerts.AlertSilenceEngine;
+import dev.fleetpulse.processor.alerts.AlertSilenceKey;
+import dev.fleetpulse.processor.alerts.AlertSilenceState;
+import dev.fleetpulse.processor.alerts.AlertType;
+import dev.fleetpulse.processor.alerts.JdbcAlertSilenceStateStore;
 import dev.fleetpulse.processor.config.FleetpulseGeofencingProperties;
 import dev.fleetpulse.processor.telemetry.TelemetryMessage;
 import org.slf4j.Logger;
@@ -45,12 +51,52 @@ import java.util.UUID;
 // one flush). A synchronous write on the same JdbcTemplate/connection gives
 // correct chaining for free through ordinary read-after-write, without
 // needing WU3-style Java-side chaining here too.
+//
+// T8 (prod-qa-findings, "geofence alert silence window"): a SECOND,
+// independent layer sits on top of the hysteresis above -- confirmation/exit
+// buffering already damps GPS-boundary jitter into a stable membership
+// transition, but a vehicle can still genuinely oscillate (cross the
+// buffered boundary repeatedly over minutes, e.g. parking right at a depot
+// gate) and produce a real ENTER/EXIT/ENTER/EXIT sequence of firedAlerts(),
+// each one a legitimate confirmed transition on its own. AlertSilenceEngine
+// (alerts package) already solves this exact shape for a CONTINUOUS
+// condition (speeding/excessive-idle: conditionActive reflects whether the
+// condition holds on THIS message, and the engine resets to inactive when it
+// does not). A geofence alert has no such continuous condition to sample --
+// GeofenceRuleEngine only ever adds a type to firedAlerts() at the instant a
+// transition/dwell is confirmed -- so this class calls
+// AlertSilenceEngine.evaluate() ONLY at that instant, always with
+// conditionActive=true, never with false. Concretely: the first alert of a
+// (vehicle, geofence, type) always fires (freshEpisode, prev.active() was
+// false); once fired, the persisted state's active flag stays true forever
+// for that key (this class never calls evaluate() with conditionActive=false
+// to reset it), so every later occurrence falls through to the engine's
+// windowElapsed check alone -- exactly "suppress a repeat within the window,
+// re-arm once it elapses," with no notion of "episode" needed for an event.
+// Load-once/chain-in-Java shape AlertRuleDispatcher uses, NOT this class's
+// own per-(message, geofence) membership-state round trip above: unlike
+// that read, which needs each message's own within-batch chaining to see
+// the very last dwellAlerted it wrote, this layer's state per key never
+// needs to be re-read mid-batch from the DB (the in-memory map IS the
+// source of truth for the duration of one evaluateAndDispatch call), so a
+// single upfront bulk load is correct and reuses JdbcAlertSilenceStateStore
+// as-is. The write side, however, is scoped per MESSAGE, not a single
+// trailing write for the whole batch: writeBulk() is called once
+// processMessage finishes a message's own geofences, with only the keys
+// THAT message mutated (see processMessage's own comment). Deferring every
+// message's silence write to the end of the whole batch, like the
+// membership-state/alert writes above never do, would mean a later message
+// in the batch throwing loses the silence record for every earlier
+// message's already-written, already-published alert -- leaving a
+// redelivery/next batch free to re-notify within the window.
 @Component
 public class GeofenceRuleDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(GeofenceRuleDispatcher.class);
 
     private static final String VEHICLE_ORGANIZATION_IDS_SQL = "SELECT id, organization_id FROM vehicles WHERE id = ANY (?)";
+    private static final List<AlertType> GEOFENCE_ALERT_TYPES =
+        List.of(AlertType.GEOFENCE_ENTER, AlertType.GEOFENCE_EXIT, AlertType.GEOFENCE_DWELL);
 
     private final JdbcTemplate jdbcTemplate;
     private final GeofenceEvaluator geofenceEvaluator;
@@ -58,6 +104,7 @@ public class GeofenceRuleDispatcher {
     private final GeofenceAlertPublisher alertPublisher;
     private final JdbcVehicleFenceStateWriter fenceStateWriter;
     private final JdbcGeofenceAlertWriter alertWriter;
+    private final JdbcAlertSilenceStateStore silenceStateStore;
 
     public GeofenceRuleDispatcher(
         JdbcTemplate jdbcTemplate,
@@ -65,7 +112,8 @@ public class GeofenceRuleDispatcher {
         FleetpulseGeofencingProperties geofencingProperties,
         GeofenceAlertPublisher alertPublisher,
         JdbcVehicleFenceStateWriter fenceStateWriter,
-        JdbcGeofenceAlertWriter alertWriter
+        JdbcGeofenceAlertWriter alertWriter,
+        JdbcAlertSilenceStateStore silenceStateStore
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.geofenceEvaluator = geofenceEvaluator;
@@ -73,6 +121,7 @@ public class GeofenceRuleDispatcher {
         this.alertPublisher = alertPublisher;
         this.fenceStateWriter = fenceStateWriter;
         this.alertWriter = alertWriter;
+        this.silenceStateStore = silenceStateStore;
     }
 
     public void evaluateAndDispatch(List<TelemetryMessage> eligibleMessages) {
@@ -83,6 +132,8 @@ public class GeofenceRuleDispatcher {
         FenceMembershipConfig config = new FenceMembershipConfig(
             geofencingProperties.confirmationReadings(), geofencingProperties.confirmationDuration()
         );
+        Map<AlertSilenceKey, AlertSilenceState> silenceStates =
+            new HashMap<>(silenceStateStore.loadBulkByVehicleAndType(organizationIdByVehicle.keySet(), GEOFENCE_ALERT_TYPES));
         for (TelemetryMessage message : eligibleMessages) {
             UUID organizationId = organizationIdByVehicle.get(message.vehicleId());
             if (organizationId == null) {
@@ -92,11 +143,14 @@ public class GeofenceRuleDispatcher {
                 // to evaluate it against.
                 continue;
             }
-            processMessage(organizationId, message, config);
+            processMessage(organizationId, message, config, silenceStates);
         }
     }
 
-    private void processMessage(UUID organizationId, TelemetryMessage message, FenceMembershipConfig config) {
+    private void processMessage(
+        UUID organizationId, TelemetryMessage message, FenceMembershipConfig config,
+        Map<AlertSilenceKey, AlertSilenceState> silenceStates
+    ) {
         Set<UUID> insideStrict = geofenceEvaluator.containingGeofenceIds(organizationId, message.lat(), message.lon());
         Map<UUID, GeofenceMembershipRecord> previousStates = geofenceEvaluator.loadActiveMembershipStates(message.vehicleId());
 
@@ -113,14 +167,31 @@ public class GeofenceRuleDispatcher {
 
         Map<UUID, GeofenceRule> rules = geofenceEvaluator.loadRules(relevantGeofenceIds);
 
+        // Keys THIS message actually touched (an alert type in
+        // firedAlerts() for one of its geofences, whether or not the
+        // silence engine went on to suppress it) -- written below instead
+        // of the whole (bulk-loaded, batch-wide) silenceStates map, which
+        // would otherwise re-persist every historical row for every
+        // vehicle in the batch even when this message fired nothing.
+        Map<AlertSilenceKey, AlertSilenceState> mutatedSilenceStates = new HashMap<>();
         for (UUID geofenceId : relevantGeofenceIds) {
             GeofenceRule rule = rules.get(geofenceId);
             if (rule == null) {
                 // Geofence hard-deleted since being referenced; nothing left to evaluate it against.
                 continue;
             }
-            dispatchForGeofence(organizationId, message, config, geofenceId, rule, insideStrict, insideBufferedFromQuery, previousStates);
+            dispatchForGeofence(
+                organizationId, message, config, geofenceId, rule, insideStrict, insideBufferedFromQuery, previousStates,
+                silenceStates, mutatedSilenceStates
+            );
         }
+        // Persisted here, right after this message's own alerts/fence-state
+        // above are already written and published, not deferred to the end
+        // of the whole evaluateAndDispatch loop -- see this class's own
+        // top comment for why deferring it would risk losing an
+        // already-published alert's silence record to a later message's
+        // exception.
+        silenceStateStore.writeBulk(mutatedSilenceStates);
     }
 
     private void dispatchForGeofence(
@@ -131,7 +202,9 @@ public class GeofenceRuleDispatcher {
         GeofenceRule rule,
         Set<UUID> insideStrict,
         Set<UUID> insideBufferedFromQuery,
-        Map<UUID, GeofenceMembershipRecord> previousStates
+        Map<UUID, GeofenceMembershipRecord> previousStates,
+        Map<AlertSilenceKey, AlertSilenceState> silenceStates,
+        Map<AlertSilenceKey, AlertSilenceState> mutatedSilenceStates
     ) {
         GeofenceMembershipRecord previous = previousStates.get(geofenceId);
         FenceMembershipState prevState = previous != null
@@ -148,6 +221,19 @@ public class GeofenceRuleDispatcher {
         fenceStateWriter.write(message.vehicleId(), geofenceId, outcome.nextState(), outcome.dwellAlerted());
 
         for (GeofenceAlertType alertType : outcome.firedAlerts()) {
+            AlertSilenceKey silenceKey = new AlertSilenceKey(message.vehicleId(), toSilenceAlertType(alertType), geofenceId);
+            AlertSilenceState previousSilenceState = silenceStates.getOrDefault(silenceKey, AlertSilenceState.NONE);
+            // conditionActive is always true here: see this class's own
+            // comment for why an event (not a continuous condition) only
+            // ever calls the engine at the instant it fires.
+            AlertSilenceDecision decision =
+                AlertSilenceEngine.evaluate(previousSilenceState, true, message.recordedAt(), geofencingProperties.silenceWindow());
+            silenceStates.put(silenceKey, decision.nextState());
+            mutatedSilenceStates.put(silenceKey, decision.nextState());
+            if (!decision.shouldFire()) {
+                continue;
+            }
+
             GeofenceAlert alert = new GeofenceAlert(
                 UUID.randomUUID(), organizationId, message.vehicleId(), geofenceId, alertType, message.recordedAt()
             );
@@ -164,6 +250,20 @@ public class GeofenceRuleDispatcher {
                     alertType, message.vehicleId(), geofenceId, ex);
             }
         }
+    }
+
+    // The silence layer keys by the SAME unified AlertType the `alerts`
+    // table/JdbcAlertSilenceStateStore already use (AlertType.wireValue(),
+    // V12) rather than GeofenceAlertType's own unprefixed wire value --
+    // mirrors GeofenceAlertType.storageValue()'s identical "geofence_" +
+    // wireValue() mapping, kept here instead of on GeofenceAlertType itself
+    // so that enum stays free of a dependency on the alerts package.
+    private static AlertType toSilenceAlertType(GeofenceAlertType type) {
+        return switch (type) {
+            case ENTER -> AlertType.GEOFENCE_ENTER;
+            case EXIT -> AlertType.GEOFENCE_EXIT;
+            case DWELL -> AlertType.GEOFENCE_DWELL;
+        };
     }
 
     private Map<UUID, UUID> loadOrganizationIds(List<TelemetryMessage> messages) {
