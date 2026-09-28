@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,16 +28,19 @@ public class ActivityReportService {
     private final JdbcActivityReportRepository repository;
     private final InProgressTripJdbcReader inProgressTripReader;
     private final MotionConfig motionConfig;
+    private final Clock clock;
 
     ActivityReportService(
             ObjectProvider<VehicleRepository> vehicles,
             JdbcActivityReportRepository repository,
             InProgressTripJdbcReader inProgressTripReader,
-            FleetpulseMotionDetectionProperties motionProperties) {
+            FleetpulseMotionDetectionProperties motionProperties,
+            Clock clock) {
         this.vehicles = vehicles;
         this.repository = repository;
         this.inProgressTripReader = inProgressTripReader;
         this.motionConfig = new MotionConfig(motionProperties.stopThresholdKmh(), motionProperties.startThresholdKmh(), motionProperties.minStableDuration());
+        this.clock = clock;
     }
 
     public ActivityReportResponse report(UUID vehicleId, UUID organizationId, Instant from, Instant to) {
@@ -68,11 +72,11 @@ public class ActivityReportService {
     // comparison would spuriously treat every "today" request as already
     // past.
     private ActivityInProgressTripResponse computeInProgressTrip(UUID vehicleId, UUID organizationId, Instant from, LocalDate toDay) {
-        if (toDay.isBefore(LocalDate.now(ZoneOffset.UTC))) {
+        if (toDay.isBefore(LocalDate.now(clock))) {
             return null;
         }
 
-        Instant now = Instant.now();
+        Instant now = Instant.now(clock);
         Instant lastClosedTripEndedAt = inProgressTripReader.lastClosedTripEndedAt(vehicleId);
         boolean clippedToWindowStart = from.isAfter(lastClosedTripEndedAt);
         Instant windowStart = clippedToWindowStart ? from : lastClosedTripEndedAt;
