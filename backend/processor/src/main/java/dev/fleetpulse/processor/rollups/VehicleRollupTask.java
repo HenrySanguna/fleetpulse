@@ -1,10 +1,10 @@
 package dev.fleetpulse.processor.rollups;
 
+import dev.fleetpulse.geocore.PositionSample;
 import dev.fleetpulse.processor.config.FleetpulseRollupsProperties;
 import dev.fleetpulse.processor.telemetry.TelemetryMessage;
 import dev.fleetpulse.processor.telemetry.VehicleMotionStreakTracker;
 import dev.fleetpulse.processor.telemetry.VehicleMotionUpdate;
-import dev.fleetpulse.processor.trips.PositionSample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;

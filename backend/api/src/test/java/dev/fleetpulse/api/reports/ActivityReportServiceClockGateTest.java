@@ -1,10 +1,10 @@
 package dev.fleetpulse.api.reports;
 
 import dev.fleetpulse.api.config.FleetpulseMotionDetectionProperties;
-import dev.fleetpulse.api.reports.InProgressTripJdbcReader.MotionPositionSample;
 import dev.fleetpulse.domain.Organization;
 import dev.fleetpulse.domain.Vehicle;
 import dev.fleetpulse.domain.VehicleRepository;
+import dev.fleetpulse.geocore.PositionSample;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -105,11 +105,11 @@ class ActivityReportServiceClockGateTest {
         when(inProgressTripReader.lastClosedTripEndedAt(VEHICLE_ID)).thenReturn(Instant.EPOCH);
         when(inProgressTripReader.stopThreshold(ORGANIZATION_ID)).thenReturn(Duration.ofSeconds(300));
         Instant base = Instant.parse("2025-01-01T00:00:00Z");
-        List<MotionPositionSample> positions = List.of(
-            new MotionPositionSample(base, 4.71, -74.07, 40.0, false),
-            new MotionPositionSample(base.plusSeconds(30), 4.71, -74.0699, 40.0, false),
-            new MotionPositionSample(base.plusSeconds(60), 4.71, -74.0698, 40.0, false),
-            new MotionPositionSample(base.plusSeconds(90), 4.71, -74.0697, 40.0, false)
+        List<PositionSample> positions = List.of(
+            new PositionSample(base, 4.71, -74.07, 40.0, false),
+            new PositionSample(base.plusSeconds(30), 4.71, -74.0699, 40.0, false),
+            new PositionSample(base.plusSeconds(60), 4.71, -74.0698, 40.0, false),
+            new PositionSample(base.plusSeconds(90), 4.71, -74.0697, 40.0, false)
         );
         when(inProgressTripReader.positionsSince(any(), any(), any())).thenReturn(positions);
     }

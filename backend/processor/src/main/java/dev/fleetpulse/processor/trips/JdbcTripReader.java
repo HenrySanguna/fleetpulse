@@ -1,5 +1,6 @@
 package dev.fleetpulse.processor.trips;
 
+import dev.fleetpulse.geocore.PositionSample;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 

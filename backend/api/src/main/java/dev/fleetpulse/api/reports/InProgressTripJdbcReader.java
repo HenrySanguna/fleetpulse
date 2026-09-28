@@ -1,5 +1,6 @@
 package dev.fleetpulse.api.reports;
 
+import dev.fleetpulse.geocore.PositionSample;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -60,7 +61,7 @@ class InProgressTripJdbcReader {
         return Duration.ofSeconds(secs);
     }
 
-    List<MotionPositionSample> positionsSince(UUID vehicleId, Instant since, Instant until) {
+    List<PositionSample> positionsSince(UUID vehicleId, Instant since, Instant until) {
         return jdbcTemplate.getObject().query(
             POSITIONS_SINCE_SQL,
             ps -> {
@@ -72,17 +73,11 @@ class InProgressTripJdbcReader {
         );
     }
 
-    private static MotionPositionSample toSample(ResultSet rs) throws SQLException {
+    private static PositionSample toSample(ResultSet rs) throws SQLException {
         float speedKmh = rs.getFloat("speed_kmh");
         Double speed = rs.wasNull() ? null : (double) speedKmh;
         boolean ignition = rs.getBoolean("ignition");
         Boolean ignitionValue = rs.wasNull() ? null : ignition;
-        return new MotionPositionSample(rs.getTimestamp("recorded_at").toInstant(), rs.getDouble("lat"), rs.getDouble("lon"), speed, ignitionValue);
-    }
-
-    // Mirrors processor's own trips.PositionSample (recordedAt/lat/lon/
-    // speedKmh/ignition) -- not reused directly for the same module-boundary
-    // reason as the rest of this class.
-    record MotionPositionSample(Instant recordedAt, double lat, double lon, Double speedKmh, Boolean ignition) {
+        return new PositionSample(rs.getTimestamp("recorded_at").toInstant(), rs.getDouble("lat"), rs.getDouble("lon"), speed, ignitionValue);
     }
 }

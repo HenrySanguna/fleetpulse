@@ -4,6 +4,7 @@ import dev.fleetpulse.api.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.domain.Vehicle;
 import dev.fleetpulse.domain.VehicleRepository;
 import dev.fleetpulse.geocore.MotionConfig;
+import dev.fleetpulse.geocore.PositionSample;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -81,7 +82,7 @@ public class ActivityReportService {
         boolean clippedToWindowStart = from.isAfter(lastClosedTripEndedAt);
         Instant windowStart = clippedToWindowStart ? from : lastClosedTripEndedAt;
 
-        List<InProgressTripJdbcReader.MotionPositionSample> positions = inProgressTripReader.positionsSince(vehicleId, windowStart, now);
+        List<PositionSample> positions = inProgressTripReader.positionsSince(vehicleId, windowStart, now);
         Duration stopThreshold = inProgressTripReader.stopThreshold(organizationId);
 
         return InProgressTripCalculator
@@ -103,8 +104,8 @@ public class ActivityReportService {
             }
         }
         int accountedSecs = totalMovingSecs + totalIdleSecs;
-        // Same distance/accounted-time formula TripSegmenter.addTrip() uses
-        // for a single trip's own avg_speed_kmh, applied here across every
+        // Same distance/accounted-time formula geo-core's TripSegmentRules.metrics()
+        // uses for a single trip's own avg_speed_kmh, applied here across every
         // daily row in the range instead of one trip's span.
         double avgSpeedKmh = accountedSecs > 0 ? totalDistanceKm / (accountedSecs / 3600.0) : 0.0;
         return new ActivityReportSummaryResponse(totalDistanceKm, totalMovingSecs / 60, totalIdleSecs / 60, avgSpeedKmh, maxSpeedKmh);

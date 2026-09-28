@@ -1,13 +1,11 @@
 package dev.fleetpulse.processor.telemetry;
 
 import dev.fleetpulse.geocore.MotionConfig;
-import dev.fleetpulse.geocore.MotionDetector;
-import dev.fleetpulse.geocore.MotionSample;
+import dev.fleetpulse.geocore.MotionReplay;
 import dev.fleetpulse.geocore.MotionState;
 import dev.fleetpulse.processor.config.FleetpulseMotionDetectionProperties;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,41 +83,21 @@ public class VehicleMotionStreakTracker {
         return updates;
     }
 
-    // A message with no speedKmh cannot be evaluated by MotionDetector,
-    // which requires a primitive double (MotionSample.speedKmh()). Rather
-    // than guessing a speed, motion_state and both streaks are simply
-    // carried forward unchanged from whatever is already known -- or left
-    // NULL if nothing is known yet, since defaulting an unevaluated vehicle
-    // to STOPPED would assert a state with zero evidence behind it.
+    // The streak-tracking/debounce computation itself is shared with api's
+    // InProgressTripCalculator via geo-core's MotionReplay (shared trip
+    // rules change) -- this method now only resolves this class' own
+    // persisted VehicleMotionSnapshot into the (previousState, previousLow,
+    // previousHigh) triple MotionReplay.next() expects.
     private VehicleMotionUpdate nextFor(VehicleMotionSnapshot previous, TelemetryMessage message) {
-        Double speedKmh = message.speedKmh();
-        if (speedKmh == null) {
-            return previous == null
-                ? new VehicleMotionUpdate(null, null, null)
-                : new VehicleMotionUpdate(previous.motionState(), previous.lowSpeedStreakStartedAt(), previous.highSpeedStreakStartedAt());
-        }
-
-        MotionState prevState = previous == null || previous.motionState() == null ? MotionState.STOPPED : previous.motionState();
-        boolean belowStopThreshold = speedKmh < config.stopThresholdKmh();
-        boolean aboveStartThreshold = speedKmh >= config.startThresholdKmh();
-
-        Instant lowStreakStartedAt = belowStopThreshold
-            ? continuedOrStarted(previous == null ? null : previous.lowSpeedStreakStartedAt(), message.recordedAt())
-            : null;
-        Instant highStreakStartedAt = aboveStartThreshold
-            ? continuedOrStarted(previous == null ? null : previous.highSpeedStreakStartedAt(), message.recordedAt())
-            : null;
-
-        Duration lowSpeedStreak = belowStopThreshold ? Duration.between(lowStreakStartedAt, message.recordedAt()) : Duration.ZERO;
-        Duration highSpeedStreak = aboveStartThreshold ? Duration.between(highStreakStartedAt, message.recordedAt()) : Duration.ZERO;
+        MotionState previousState = previous == null ? null : previous.motionState();
+        Instant previousLow = previous == null ? null : previous.lowSpeedStreakStartedAt();
+        Instant previousHigh = previous == null ? null : previous.highSpeedStreakStartedAt();
         boolean engineOn = Boolean.TRUE.equals(message.ignition());
 
-        MotionState nextState = MotionDetector.next(prevState, new MotionSample(speedKmh, engineOn, lowSpeedStreak, highSpeedStreak), config);
-        return new VehicleMotionUpdate(nextState, lowStreakStartedAt, highStreakStartedAt);
-    }
-
-    private static Instant continuedOrStarted(Instant existingStreakStartedAt, Instant recordedAt) {
-        return existingStreakStartedAt != null ? existingStreakStartedAt : recordedAt;
+        MotionReplay.Transition transition = MotionReplay.next(
+            previousState, previousLow, previousHigh, message.speedKmh(), engineOn, message.recordedAt(), config
+        );
+        return new VehicleMotionUpdate(transition.motionState(), transition.lowSpeedStreakStartedAt(), transition.highSpeedStreakStartedAt());
     }
 
     private static boolean isNewer(VehicleMotionSnapshot previous, TelemetryMessage message) {

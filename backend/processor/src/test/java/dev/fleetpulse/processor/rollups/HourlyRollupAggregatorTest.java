@@ -1,8 +1,8 @@
 package dev.fleetpulse.processor.rollups;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.geocore.PositionSample;
 import dev.fleetpulse.processor.telemetry.VehicleMotionUpdate;
-import dev.fleetpulse.processor.trips.PositionSample;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
