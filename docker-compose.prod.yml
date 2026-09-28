@@ -186,10 +186,17 @@ services:
       # Task 5.9 (user decision): demo vehicles circulate in Madrid instead
       # of over the whole globe. minLat,minLon,maxLat,maxLon.
       SIMULATOR_BOUNDS: "40.35,-3.80,40.52,-3.58"
+      # Bounded by default so Neon can scale to zero between demos: a
+      # simulator running 24/7 kept the compute awake and exhausted the
+      # Free plan's monthly CU-hour allowance. Override per run with
+      # SIMULATOR_RUN_DURATION_MS=... docker compose --profile demo up -d simulator.
+      SIMULATOR_RUN_DURATION_MS: ${SIMULATOR_RUN_DURATION_MS:-3600000}
     depends_on:
       mosquitto:
         condition: service_healthy
-    restart: unless-stopped
+    # on-failure, not unless-stopped: the clean exit after the run
+    # duration must not be restarted into another run.
+    restart: on-failure
     networks:
       - fleetpulse
 
