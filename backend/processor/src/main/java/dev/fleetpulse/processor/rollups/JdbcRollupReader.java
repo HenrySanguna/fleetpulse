@@ -43,6 +43,16 @@ public class JdbcRollupReader {
         ORDER BY recorded_at ASC
         """;
 
+    // One index probe per vehicle on the (vehicle_id, recorded_at) primary key,
+    // instead of a MAX() over the whole positions table.
+    private static final String LATEST_POSITION_RECORDED_AT_SQL = """
+        SELECT MAX(latest.recorded_at)
+        FROM vehicles v
+        CROSS JOIN LATERAL (
+            SELECT recorded_at FROM positions WHERE vehicle_id = v.id ORDER BY recorded_at DESC LIMIT 1
+        ) latest
+        """;
+
     private final JdbcTemplate jdbcTemplate;
 
     public JdbcRollupReader(JdbcTemplate jdbcTemplate) {
@@ -54,6 +64,12 @@ public class JdbcRollupReader {
             VEHICLES_SQL,
             (rs, rowNum) -> new VehicleRef((UUID) rs.getObject("vehicle_id"), (UUID) rs.getObject("organization_id"))
         );
+    }
+
+    // Instant.EPOCH when no position exists yet.
+    public Instant latestPositionRecordedAt() {
+        Timestamp latest = jdbcTemplate.queryForObject(LATEST_POSITION_RECORDED_AT_SQL, Timestamp.class);
+        return latest == null ? Instant.EPOCH : latest.toInstant();
     }
 
     public List<PositionSample> positionsForRecompute(UUID vehicleId, Instant windowStart, Instant windowEnd) {

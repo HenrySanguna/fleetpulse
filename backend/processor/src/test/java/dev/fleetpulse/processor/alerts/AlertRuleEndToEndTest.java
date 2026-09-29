@@ -23,6 +23,7 @@ import dev.fleetpulse.processor.geofencing.MqttGeofenceAlertPublisher;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import dev.fleetpulse.processor.telemetry.JdbcTelemetryPositionWriter;
 import dev.fleetpulse.processor.telemetry.TelemetryImplausibilityFilter;
+import dev.fleetpulse.processor.telemetry.TelemetryActivity;
 import dev.fleetpulse.processor.telemetry.TelemetryMessageListener;
 import dev.fleetpulse.processor.telemetry.TelemetryMqttConfig;
 import dev.fleetpulse.processor.telemetry.TelemetryPayloadParser;
@@ -235,7 +236,7 @@ class AlertRuleEndToEndTest {
             // (MqttAlertPublisher, reusing AlertMqttConfig registered above)
             // -- this is the one dispatcher this test actually exercises.
             JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, MqttAlertPublisher.class, AlertRuleDispatcher.class,
-            JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
+            JdbcTelemetryPositionWriter.class, TelemetryActivity.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
         return ctx;
