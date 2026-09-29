@@ -1,5 +1,6 @@
 package dev.fleetpulse.processor.trips;
 
+import dev.fleetpulse.geocore.PositionSample;
 import dev.fleetpulse.processor.config.FleetpulseTripsProperties;
 import dev.fleetpulse.processor.telemetry.TelemetryMessage;
 import dev.fleetpulse.processor.telemetry.VehicleMotionStreakTracker;

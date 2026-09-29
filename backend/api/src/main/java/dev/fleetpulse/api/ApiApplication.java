@@ -4,7 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
+
+import java.time.Clock;
 
 // @SpringBootApplication's implicit component scan only covers dev.fleetpulse.api
 // and below; JPA entities live in the domain module's dev.fleetpulse.domain
@@ -23,5 +26,15 @@ public class ApiApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(ApiApplication.class, args);
+    }
+
+    // QA follow-up F6: injectable so ActivityReportService's "is the
+    // requested day today (UTC)" gate can be pinned to a fixed instant in
+    // tests instead of depending on the real wall clock. systemUTC(), not
+    // the platform default zone, matches the UTC calendar day
+    // vehicle_daily.day/ActivityReportService already use everywhere else.
+    @Bean
+    Clock clock() {
+        return Clock.systemUTC();
     }
 }

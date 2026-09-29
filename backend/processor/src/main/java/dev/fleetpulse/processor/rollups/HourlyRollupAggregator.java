@@ -3,8 +3,8 @@ package dev.fleetpulse.processor.rollups;
 import dev.fleetpulse.geocore.Geo;
 import dev.fleetpulse.geocore.GeoPoint;
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.geocore.PositionSample;
 import dev.fleetpulse.processor.telemetry.VehicleMotionUpdate;
-import dev.fleetpulse.processor.trips.PositionSample;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -18,12 +18,11 @@ import java.util.UUID;
 // Task 4.1's own aggregation core: pure and database-free, the same
 // pure-logic/JDBC-wiring separation TripSegmenter (pure) vs
 // JdbcTripReader/JdbcTripWriter, and AlertSilenceEngine (pure) vs
-// JdbcAlertSilenceStateStore, already established. Reuses
-// dev.fleetpulse.processor.trips.PositionSample as-is (same shape this
-// aggregator needs: recordedAt/lat/lon/speedKmh/ignition) rather than
-// declaring a duplicate record -- the same "reuse what already exists"
-// convention Geo.distanceMeters reuse already follows, just within-module
-// instead of cross-module.
+// JdbcAlertSilenceStateStore, already established. Reuses geo-core's shared
+// PositionSample as-is (same shape this aggregator needs: recordedAt/lat/
+// lon/speedKmh/ignition) rather than declaring a duplicate record -- the
+// same "reuse what already exists" convention Geo.distanceMeters reuse
+// already follows.
 //
 // `positions`/`motionUpdates` cover one vehicle's positions from strictly
 // before `windowStart` (at most one "anchor" position, supplied only to

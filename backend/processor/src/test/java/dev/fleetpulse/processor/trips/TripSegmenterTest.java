@@ -1,6 +1,7 @@
 package dev.fleetpulse.processor.trips;
 
 import dev.fleetpulse.geocore.MotionState;
+import dev.fleetpulse.geocore.PositionSample;
 import dev.fleetpulse.processor.telemetry.VehicleMotionUpdate;
 import org.junit.jupiter.api.Test;
 

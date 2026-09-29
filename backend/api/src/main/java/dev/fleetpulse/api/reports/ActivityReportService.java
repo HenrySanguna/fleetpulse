@@ -4,11 +4,13 @@ import dev.fleetpulse.api.config.FleetpulseMotionDetectionProperties;
 import dev.fleetpulse.domain.Vehicle;
 import dev.fleetpulse.domain.VehicleRepository;
 import dev.fleetpulse.geocore.MotionConfig;
+import dev.fleetpulse.geocore.PositionSample;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,16 +29,19 @@ public class ActivityReportService {
     private final JdbcActivityReportRepository repository;
     private final InProgressTripJdbcReader inProgressTripReader;
     private final MotionConfig motionConfig;
+    private final Clock clock;
 
     ActivityReportService(
             ObjectProvider<VehicleRepository> vehicles,
             JdbcActivityReportRepository repository,
             InProgressTripJdbcReader inProgressTripReader,
-            FleetpulseMotionDetectionProperties motionProperties) {
+            FleetpulseMotionDetectionProperties motionProperties,
+            Clock clock) {
         this.vehicles = vehicles;
         this.repository = repository;
         this.inProgressTripReader = inProgressTripReader;
         this.motionConfig = new MotionConfig(motionProperties.stopThresholdKmh(), motionProperties.startThresholdKmh(), motionProperties.minStableDuration());
+        this.clock = clock;
     }
 
     public ActivityReportResponse report(UUID vehicleId, UUID organizationId, Instant from, Instant to) {
@@ -68,16 +73,16 @@ public class ActivityReportService {
     // comparison would spuriously treat every "today" request as already
     // past.
     private ActivityInProgressTripResponse computeInProgressTrip(UUID vehicleId, UUID organizationId, Instant from, LocalDate toDay) {
-        if (toDay.isBefore(LocalDate.now(ZoneOffset.UTC))) {
+        if (toDay.isBefore(LocalDate.now(clock))) {
             return null;
         }
 
-        Instant now = Instant.now();
+        Instant now = Instant.now(clock);
         Instant lastClosedTripEndedAt = inProgressTripReader.lastClosedTripEndedAt(vehicleId);
         boolean clippedToWindowStart = from.isAfter(lastClosedTripEndedAt);
         Instant windowStart = clippedToWindowStart ? from : lastClosedTripEndedAt;
 
-        List<InProgressTripJdbcReader.MotionPositionSample> positions = inProgressTripReader.positionsSince(vehicleId, windowStart, now);
+        List<PositionSample> positions = inProgressTripReader.positionsSince(vehicleId, windowStart, now);
         Duration stopThreshold = inProgressTripReader.stopThreshold(organizationId);
 
         return InProgressTripCalculator
@@ -99,8 +104,8 @@ public class ActivityReportService {
             }
         }
         int accountedSecs = totalMovingSecs + totalIdleSecs;
-        // Same distance/accounted-time formula TripSegmenter.addTrip() uses
-        // for a single trip's own avg_speed_kmh, applied here across every
+        // Same distance/accounted-time formula geo-core's TripSegmentRules.metrics()
+        // uses for a single trip's own avg_speed_kmh, applied here across every
         // daily row in the range instead of one trip's span.
         double avgSpeedKmh = accountedSecs > 0 ? totalDistanceKm / (accountedSecs / 3600.0) : 0.0;
         return new ActivityReportSummaryResponse(totalDistanceKm, totalMovingSecs / 60, totalIdleSecs / 60, avgSpeedKmh, maxSpeedKmh);

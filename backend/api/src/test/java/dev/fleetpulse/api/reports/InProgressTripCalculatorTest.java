@@ -1,7 +1,7 @@
 package dev.fleetpulse.api.reports;
 
-import dev.fleetpulse.api.reports.InProgressTripJdbcReader.MotionPositionSample;
 import dev.fleetpulse.geocore.MotionConfig;
+import dev.fleetpulse.geocore.PositionSample;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -114,14 +114,14 @@ class InProgressTripCalculatorTest {
     }
 
     // A small test DSL, same spirit as TripSegmenterTest's own Fixture:
-    // builds a MotionPositionSample list second-by-second offset from BASE
+    // builds a PositionSample list second-by-second offset from BASE
     // (raw speed samples, not pre-classified MotionState -- calculate()
     // does its own replay), then calls the calculator under test.
     private static final class Fixture {
-        private final List<MotionPositionSample> positions = new ArrayList<>();
+        private final List<PositionSample> positions = new ArrayList<>();
 
         Fixture sample(long offsetSeconds, double speedKmh) {
-            positions.add(new MotionPositionSample(BASE.plusSeconds(offsetSeconds), 4.71, -74.07 + offsetSeconds * 0.0001, speedKmh, false));
+            positions.add(new PositionSample(BASE.plusSeconds(offsetSeconds), 4.71, -74.07 + offsetSeconds * 0.0001, speedKmh, false));
             return this;
         }
 
