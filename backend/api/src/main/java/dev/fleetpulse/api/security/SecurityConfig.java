@@ -92,6 +92,31 @@ public class SecurityConfig {
                 .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
                 .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
                 .permitAll())
+            // F8: same JSON-API reasoning as formLogin above, missed when
+            // formLogin was fixed -- with no .logout(...) configured here,
+            // Spring Security's default SimpleUrlLogoutSuccessHandler
+            // answers POST /logout with a 302 to /login?logout, built from
+            // request.getScheme(). Caddy already forwards
+            // X-Forwarded-Proto: https, but Spring ignores it without
+            // server.forward-headers-strategy (application-prod.yml), so
+            // production issued an http:// Location over an https://
+            // connection -- blocked by the browser as mixed content.
+            // Answering with SC_OK (not 204) matches formLogin's own
+            // successHandler above and reuses the exact response shape the
+            // console's postForm() (api-client-json-get.ts) already reads
+            // with responseType: 'text' and discards -- a path already
+            // proven against a real browser for /login, so /logout needs
+            // no new client-side behavior to trust.
+            // invalidateHttpSession/clearAuthentication stay at their
+            // defaults (true); no explicit deleteCookies(...) is added
+            // since there is no separate remember-me cookie here -- Spring
+            // Session's own cookie serializer expires the SESSION cookie,
+            // with the same HttpOnly/Secure/SameSite=None attributes
+            // application.yml configures for login's cookie, once the
+            // session it tracks is invalidated.
+            .logout(logout -> logout
+                .logoutUrl("/logout")
+                .logoutSuccessHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK)))
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint((request, response, authException) ->
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))

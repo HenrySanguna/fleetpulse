@@ -110,6 +110,54 @@ class DispatcherSessionAuthenticationTest {
         assertThat(setCookie).containsIgnoringCase("SameSite=None");
     }
 
+    // F8: production logout over HTTPS redirected the browser to an http://
+    // URL (Spring Security's default logout success handler is a redirect,
+    // built from request.getScheme(), which Spring never sees as "https"
+    // behind Caddy without server.forward-headers-strategy) and got blocked
+    // as mixed content. SecurityConfig now answers with a plain 200 instead
+    // of any redirect -- asserted here by the absence of a Location header
+    // too, not just the status code, since a 200 that still carried a
+    // stray redirect Location would pass a status-only check just as
+    // wrongly as a 3xx would.
+    @Test
+    void answersLogoutWithAPlainStatusAndNoRedirectAndEndsTheSession() {
+        seedDispatcher("acme-logout", "dana@acme.test", "s3cret-pass", UserRole.DISPATCHER);
+
+        ResponseEntity<String> loginResponse = DispatcherLoginTestSupport
+            .login(restTemplate, baseUrl(), "dana@acme.test", "s3cret-pass");
+        HttpHeaders logoutHeaders = DispatcherLoginTestSupport
+            .mutationHeadersFrom(restTemplate, baseUrl(), loginResponse);
+
+        ResponseEntity<String> logoutResponse = restTemplate.exchange(
+            baseUrl() + "/logout", HttpMethod.POST, new HttpEntity<>(logoutHeaders), String.class);
+
+        assertThat(logoutResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(logoutResponse.getHeaders().getLocation()).isNull();
+
+        // Confirms Spring Session's cookie serializer expires the SESSION
+        // cookie on invalidate, with the same attributes login's own cookie
+        // carries (SecurityConfig relies on this instead of an explicit
+        // deleteCookies(...) call).
+        List<String> logoutCookies = logoutResponse.getHeaders().get(HttpHeaders.SET_COOKIE);
+        assertThat(logoutCookies).isNotNull().isNotEmpty();
+        String expiredCookie = logoutCookies.stream()
+            .filter(cookie -> cookie.startsWith("SESSION="))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no SESSION cookie in " + logoutCookies));
+        assertThat(expiredCookie).containsIgnoringCase("Max-Age=0");
+        assertThat(expiredCookie).contains("HttpOnly");
+        assertThat(expiredCookie).contains("Secure");
+        assertThat(expiredCookie).containsIgnoringCase("SameSite=None");
+
+        // The session the logout call authenticated with must no longer
+        // work -- confirms invalidateHttpSession's default did fire, not
+        // just that the response looked right.
+        ResponseEntity<String> afterLogout = restTemplate.exchange(
+            baseUrl() + "/api/dispatchers/me", HttpMethod.GET,
+            new HttpEntity<>(DispatcherLoginTestSupport.sessionHeadersFrom(loginResponse)), String.class);
+        assertThat(afterLogout.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     @Test
     void rejectsLoginWithAnIncorrectPassword() {
         seedDispatcher("acme-badpass", "bea@acme.test", "s3cret-pass", UserRole.DISPATCHER);

@@ -9,7 +9,6 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -18,12 +17,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 // spring.autoconfigure.exclude keeps the context free of a real DataSource /
-// Hibernate / Flyway boot: publishing the OpenAPI document must not depend on
-// database connectivity being available.
+// Hibernate / Flyway boot: proving the forwarded-header setting takes effect
+// must not depend on database connectivity being available.
+//
+// spring.profiles.active=prod (F8): the only place server.forward-headers-
+// strategy=native is set (application-prod.yml -- prod is the only profile
+// ever fronted by a reverse proxy, see that file's own comment). Kept in its
+// own class, separate from OpenApiDocumentPublicationTest, so activating
+// prod does not silently apply to that class's other (default-profile)
+// assertions too.
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
     webEnvironment = RANDOM_PORT,
     properties = {
+        "spring.profiles.active=prod",
         "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
             + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
             + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
@@ -33,7 +40,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
         "fleetpulse.mqtt.broker-url=tcp://localhost:1883"
     }
 )
-class OpenApiDocumentPublicationTest {
+class ForwardedHeadersTest {
 
     @LocalServerPort
     private int port;
@@ -43,43 +50,21 @@ class OpenApiDocumentPublicationTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
+    // F8: proves server.forward-headers-strategy=native actually takes
+    // effect in the prod profile, not just that it's set -- springdoc
+    // builds this document's own "servers" entry from the request's
+    // scheme/host/port, making it a convenient existing absolute-URL-
+    // bearing endpoint. There's no redirect-issuing endpoint left to assert
+    // this against directly: SecurityConfig's logout handler was changed
+    // by the same fix that introduced this setting to never redirect at
+    // all (login's own handler already avoided redirects before that).
+    //
+    // TestRestTemplate connects from 127.0.0.1, which Tomcat's RemoteIpValve
+    // (native's implementation for this container) trusts as an internal
+    // proxy by default, so this stays green under native the same way it
+    // was under framework.
     @Test
-    void openApiDocumentIsPublishedAndReachable() {
-        ResponseEntity<String> response = restTemplate
-            .getForEntity("http://localhost:" + port + "/v3/api-docs", String.class);
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
-
-        JsonNode document = jsonMapper.readTree(response.getBody());
-
-        assertThat(document.path("openapi").asString()).isNotBlank();
-        assertThat(document.has("paths")).isTrue();
-    }
-
-    // 02-add-fleet-auth, WU3 follow-up: adding Spring Security in WU2 made
-    // every previously-open endpoint deny-by-default, including
-    // springdoc's interactive UI over this same document -- SecurityConfig
-    // now permits it for the same reason as /v3/api-docs/** above.
-    @Test
-    void swaggerUiIsReachableWithoutAuthentication() {
-        ResponseEntity<String> response = restTemplate
-            .getForEntity("http://localhost:" + port + "/swagger-ui/index.html", String.class);
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-    }
-
-    // F8: this class runs the default profile (no server.forward-headers-
-    // strategy set at all -- application.yml has no such key, and this
-    // class activates no other profile), the same as plain local/dev.
-    // ForwardedHeadersTest (dedicated prod-profile class in this same
-    // package) proves the opposite for that profile: springdoc's "servers"
-    // entry, built from request.getScheme(), does turn https there. Here
-    // it must stay on the scheme the request actually arrived over,
-    // confirming a client-supplied X-Forwarded-Proto is not honored by
-    // accident when no reverse proxy is in front of the app.
-    @Test
-    void ignoresForwardedProtocolWhenBuildingTheOpenApiServerUrlOutsideProd() {
+    void honorsForwardedProtocolWhenBuildingTheOpenApiServerUrl() {
         HttpHeaders forwardedHttps = new HttpHeaders();
         forwardedHttps.add("X-Forwarded-Proto", "https");
 
@@ -90,6 +75,6 @@ class OpenApiDocumentPublicationTest {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         JsonNode document = jsonMapper.readTree(response.getBody());
         String serverUrl = document.path("servers").path(0).path("url").asString();
-        assertThat(serverUrl).startsWith("http://").doesNotStartWith("https://");
+        assertThat(serverUrl).startsWith("https://");
     }
 }
