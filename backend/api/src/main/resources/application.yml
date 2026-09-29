@@ -14,6 +14,13 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  datasource:
+    hikari:
+      # Idle connections are closed after 2 min instead of being kept at
+      # maximum-pool-size, so an idle app holds none open against Neon and
+      # its compute can scale to zero. maximum-pool-size is unchanged.
+      minimum-idle: 0
+      idle-timeout: 120000
   session:
     store-type: jdbc
     jdbc:
