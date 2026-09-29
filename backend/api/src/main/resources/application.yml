@@ -21,6 +21,11 @@ spring:
       # instead of Spring Session's own initializer, so it stays versioned
       # like every other table.
       initialize-schema: never
+      # Hourly instead of the every-minute default: the cleanup query would
+      # keep the Neon compute from scaling to zero. Expired sessions are
+      # still rejected on read (JdbcIndexedSessionRepository.findById), so
+      # cleanup only reclaims rows.
+      cleanup-cron: "0 0 * * * *"
 
 server:
   servlet:
