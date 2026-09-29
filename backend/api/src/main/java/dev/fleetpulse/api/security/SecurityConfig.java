@@ -71,7 +71,7 @@ public class SecurityConfig {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/container", "/actuator/info").permitAll()
                 .requestMatchers("/login").permitAll()
                 // Published for libs/api-client codegen (00-bootstrap-monorepo,
                 // section 4; OpenApiDocumentPublicationTest, pre-existing
