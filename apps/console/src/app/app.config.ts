@@ -8,10 +8,43 @@ import { provideHttpClient, withFetch, withInterceptors, withNoXsrfProtection } 
 import { provideApi } from '@fleetpulse/api-client';
 import { providePrimeNG } from 'primeng/config';
 import { definePreset } from '@primeuix/themes';
-import Aura from '@primeuix/themes/aura';
+import AuraBase from '@primeuix/themes/aura/base';
+import AuraButton from '@primeuix/themes/aura/button';
+import AuraCard from '@primeuix/themes/aura/card';
+import AuraCheckbox from '@primeuix/themes/aura/checkbox';
+import AuraDrawer from '@primeuix/themes/aura/drawer';
+import AuraInputNumber from '@primeuix/themes/aura/inputnumber';
+import AuraInputText from '@primeuix/themes/aura/inputtext';
+import AuraSelect from '@primeuix/themes/aura/select';
+import AuraTag from '@primeuix/themes/aura/tag';
 import { appRoutes } from './app.routes';
 import { csrfInterceptor } from './core/auth/csrf.interceptor';
 import { environment } from '../environments/environment';
+
+// The full Aura barrel (`@primeuix/themes/aura`) bundles token presets for
+// ~100 PrimeNG components, adding ~120 kB to the initial bundle. This
+// hand-assembles the same `{ ...base, components: {...} }` shape the barrel
+// builds (see node_modules/@primeuix/themes/dist/aura/index.mjs), but only
+// for the components this app and `libs/console-ui` actually use: Button,
+// Card, Checkbox, Drawer, InputNumber, InputText, Select, Tag. (The
+// barrel's own `css` field is Aura's empty placeholder -- a bare newline --
+// so it is intentionally left out here.)
+// If you add a new PrimeNG component anywhere in the console app or
+// console-ui, import its `@primeuix/themes/aura/<component>` token module
+// here and add it to `components` below -- otherwise it renders unstyled.
+const AuraSubset = {
+  ...AuraBase,
+  components: {
+    button: AuraButton,
+    card: AuraCard,
+    checkbox: AuraCheckbox,
+    drawer: AuraDrawer,
+    inputnumber: AuraInputNumber,
+    inputtext: AuraInputText,
+    select: AuraSelect,
+    tag: AuraTag,
+  },
+};
 
 // Design tokens: the mockups' primary `#2563eb` is exactly Tailwind's
 // `blue-600`, and `@primeuix/themes/aura/base`'s own primitive `blue` scale
@@ -21,7 +54,7 @@ import { environment } from '../environments/environment';
 // hand-copying hex values. `color`/`hoverColor`/`activeColor`/
 // `contrastColor` all derive from `{primary.*}` already in Aura's base
 // preset, so they follow automatically.
-const FleetPulsePreset = definePreset(Aura, {
+const FleetPulsePreset = definePreset(AuraSubset, {
   semantic: {
     primary: {
       50: '{blue.50}',

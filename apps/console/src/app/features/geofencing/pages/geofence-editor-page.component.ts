@@ -46,6 +46,17 @@ function defaultFormValue(geofence?: GeofenceResponse): { name: string; rule: Ge
   };
 }
 
+// R3-form-enable-all fix: `enable()`/`disable()` on a single control instead
+// of the whole `FormGroup`, so one governing condition (role, rule) never
+// clobbers a control another condition is independently keeping disabled.
+function setControlDisabled(control: AbstractControl, disabled: boolean, options?: { emitEvent: boolean }): void {
+  if (disabled) {
+    control.disable(options);
+  } else {
+    control.enable(options);
+  }
+}
+
 // Tasks 5.1-5.3 (+ 5.2 console half). Container: owns the reactive form,
 // the existing-geofences list, and turning a committed GeofenceDraft (from
 // GeofenceDrawingEditorComponent) plus the form's own fields into a
@@ -96,6 +107,13 @@ export class GeofenceEditorPageComponent implements OnInit {
   // signal so `canSave` stays correctly reactive under zoneless change detection.
   private readonly formStatus = toSignal(this.form.statusChanges, { initialValue: this.form.status });
   private readonly formValid = computed(() => this.formStatus() === 'VALID');
+  // Reactive counterpart to `dwellSecsRequiredForOnDwell` above: that
+  // validator only decides whether an ON_DWELL rule without a dwellSecs
+  // value makes the group invalid, it never disables the control itself.
+  // Tracked as a signal (not read as a plain getter) so the constructor's
+  // effect below reruns and re-disables/re-enables `dwellSecs` on every
+  // rule change, not only when `canManageGeofences()` changes.
+  private readonly ruleValue = toSignal(this.form.controls.rule.valueChanges, { initialValue: this.form.controls.rule.value });
   // A new geofence needs a drawn shape; an edit only ever resends the
   // selected geofence's own existing vertices (see buildUpdateRequest).
   protected readonly canSave = computed(() => {
@@ -110,15 +128,35 @@ export class GeofenceEditorPageComponent implements OnInit {
     // must never be able to edit them, since save()/create()/update() are
     // hidden already but a raw form field would otherwise still be typable.
     // Driven off the signal (not a one-time check) so a role change mid-session
-    // takes effect immediately. `disable()`/`enable()` re-emit statusChanges,
-    // which formStatus above already tracks -- canSave short-circuits on
-    // `!canManageGeofences()` regardless, so this never affects its result.
+    // takes effect immediately.
+    //
+    // Toggles `name`/`rule` individually rather than `form.enable()`/
+    // `form.disable()` on the whole group: the group-wide call used to
+    // re-enable EVERY control for an admin, including `dwellSecs` even when
+    // the rule wasn't ON_DWELL -- clobbering the rule-dependent disabled
+    // state the second effect below is responsible for. `{ emitEvent:
+    // false }` here is safe the same way the removed group-wide call was:
+    // canSave short-circuits on `!canManageGeofences()` regardless, so
+    // formStatus (which only formValid ever reads) never needs to observe
+    // these two specifically.
     effect(() => {
-      if (this.canManageGeofences()) {
-        this.form.enable();
-      } else {
-        this.form.disable();
-      }
+      const canManage = this.canManageGeofences();
+      setControlDisabled(this.form.controls.name, !canManage, { emitEvent: false });
+      setControlDisabled(this.form.controls.rule, !canManage, { emitEvent: false });
+    });
+
+    // dwellSecs is only meaningful for the ON_DWELL rule (same condition
+    // dwellSecsRequiredForOnDwell already enforces on validity) -- disabled
+    // the rest of the time, and additionally whenever the role effect above
+    // would otherwise leave it editable for a non-admin. Kept as its own
+    // effect (rather than folded into the one above) so a live rule change
+    // re-evaluates it too, not only a role change. Unlike the role effect,
+    // this one emits normally: disabling/enabling dwellSecs can flip the
+    // group's own validity (dwellSecsRequiredForOnDwell), and canSave's
+    // formValid needs formStatus to actually observe that transition.
+    effect(() => {
+      const dwellSecsAllowed = this.canManageGeofences() && this.ruleValue() === GeofenceRequest.RuleEnum.OnDwell;
+      setControlDisabled(this.form.controls.dwellSecs, !dwellSecsAllowed);
     });
   }
 

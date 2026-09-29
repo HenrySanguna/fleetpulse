@@ -133,6 +133,26 @@ describe('geofenceBounds', () => {
     expect(geofenceBounds({ vertices: [] })).toBeUndefined();
     expect(geofenceBounds({})).toBeUndefined();
   });
+
+  // R3-bounds-antimeridian: a plain min/max over -179/179 gives [-179, 179],
+  // a ~358 degree (near-global) box the long way around -- the short way
+  // across the antimeridian is only 2 degrees wide.
+  it('gives a narrow box the short way around for a geofence crossing the antimeridian', () => {
+    const geofence: GeofenceResponse = {
+      id: 'g1',
+      name: 'Strait',
+      vertices: [
+        { lat: 10, lon: 179 },
+        { lat: 20, lon: -179 },
+        { lat: 15, lon: 179.5 },
+      ],
+    };
+
+    expect(geofenceBounds(geofence)).toEqual([
+      [179, 10],
+      [181, 20],
+    ]);
+  });
 });
 
 describe('draftToFeature', () => {

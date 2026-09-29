@@ -69,6 +69,14 @@ function fieldDisabled(fixture: Fixture, testId: string): boolean {
   return (fixture.debugElement.query(By.css(`[data-testid="${testId}"]`)).componentInstance as { $disabled: () => boolean }).$disabled();
 }
 
+// dwellSecs is only ever rendered (`@if`) for the ON_DWELL rule, so a
+// non-dwell rule leaves no element for `fieldDisabled` above to query --
+// this reads the FormControl's own `disabled` flag directly instead.
+function dwellSecsControlDisabled(fixture: Fixture): boolean {
+  return (fixture.componentInstance as unknown as { form: { controls: { dwellSecs: { disabled: boolean } } } }).form.controls.dwellSecs
+    .disabled;
+}
+
 describe('GeofenceEditorPageComponent', () => {
   let geofenceService: { load: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
   let store: InstanceType<typeof GeofenceStore>;
@@ -194,6 +202,19 @@ describe('GeofenceEditorPageComponent', () => {
     expect(nameInput.disabled).toBe(false);
     expect(fieldDisabled(fixture, 'geofence-rule-select')).toBe(false);
     expect(fieldDisabled(fixture, 'geofence-dwell-input')).toBe(false);
+  });
+
+  // R3-form-enable-all: the admin-role effect used to call `form.enable()`
+  // on the whole group, which re-enabled `dwellSecs` even for a non-dwell
+  // rule -- a control the rule-dependent logic keeps disabled the rest of
+  // the time.
+  it('keeps dwellSecs disabled for a FLEET_ADMIN when the rule is not ON_DWELL', () => {
+    const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_ENTER', vertices: [] };
+    store.setGeofences([existing]);
+    const fixture = createFixture();
+    click(fixture, 'select-geofence-g1');
+
+    expect(dwellSecsControlDisabled(fixture)).toBe(true);
   });
 
   // Prod QA fix: selecting a geofence hands it to the drawing editor, which
