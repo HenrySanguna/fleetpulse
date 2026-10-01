@@ -21,5 +21,7 @@ else
   # Spring Boot Actuator maps a DOWN/OUT_OF_SERVICE health status to HTTP 503
   # by default, so a plain 2xx check is enough to catch a degraded api too
   # (e.g. mqttBroker or processorHeartbeat DOWN), not just a crashed process.
-  wget -q -O /dev/null "http://localhost:${SERVER_PORT:-8080}/actuator/health"
+  # The "container" group is every indicator except db: a periodic DB query
+  # here would keep the Neon compute awake (see application.yml).
+  wget -q -O /dev/null "http://localhost:${SERVER_PORT:-8080}/actuator/health/container"
 fi

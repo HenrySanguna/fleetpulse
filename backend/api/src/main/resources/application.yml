@@ -14,6 +14,13 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  datasource:
+    hikari:
+      # Idle connections are closed after 2 min instead of being kept at
+      # maximum-pool-size, so an idle app holds none open against Neon and
+      # its compute can scale to zero. maximum-pool-size is unchanged.
+      minimum-idle: 0
+      idle-timeout: 120000
   session:
     store-type: jdbc
     jdbc:
@@ -21,6 +28,11 @@ spring:
       # instead of Spring Session's own initializer, so it stays versioned
       # like every other table.
       initialize-schema: never
+      # Hourly instead of the every-minute default: the cleanup query would
+      # keep the Neon compute from scaling to zero. Expired sessions are
+      # still rejected on read (JdbcIndexedSessionRepository.findById), so
+      # cleanup only reclaims rows.
+      cleanup-cron: "0 0 * * * *"
 
 server:
   servlet:
@@ -58,6 +70,16 @@ management:
       # unauthenticated is a deliberate bootstrap-stage tradeoff, not a leak of
       # secrets -- indicator details here never include datasource credentials.
       show-details: always
+      # The container group excludes db; contexts without a DataSource (no db
+      # indicator) must still boot instead of failing membership validation.
+      validate-group-membership: false
+      group:
+        # Used by the Docker HEALTHCHECK (every 10s): the default db indicator
+        # would query Neon each time and keep its compute from scaling to zero.
+        # The full /actuator/health keeps db.
+        container:
+          include: "*"
+          exclude: db
   info:
     # Default "simple" mode abbreviates git.commit.id; "full" is required to
     # surface the complete 40-char SHA needed to identify the deployed build.

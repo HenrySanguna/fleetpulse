@@ -46,6 +46,16 @@ public class JdbcTripReader {
         ORDER BY recorded_at ASC
         """;
 
+    // One index probe per vehicle on the (vehicle_id, recorded_at) primary key,
+    // instead of a MAX() over the whole positions table.
+    private static final String LATEST_POSITION_RECORDED_AT_SQL = """
+        SELECT MAX(latest.recorded_at)
+        FROM vehicles v
+        CROSS JOIN LATERAL (
+            SELECT recorded_at FROM positions WHERE vehicle_id = v.id ORDER BY recorded_at DESC LIMIT 1
+        ) latest
+        """;
+
     private final JdbcTemplate jdbcTemplate;
 
     public JdbcTripReader(JdbcTemplate jdbcTemplate) {
@@ -66,6 +76,12 @@ public class JdbcTripReader {
     public Instant lastClosedTripEndedAt(UUID vehicleId) {
         Timestamp endedAt = jdbcTemplate.queryForObject(LAST_CLOSED_TRIP_ENDED_AT_SQL, Timestamp.class, vehicleId);
         return endedAt == null ? Instant.EPOCH : endedAt.toInstant();
+    }
+
+    // Instant.EPOCH when no position exists yet.
+    public Instant latestPositionRecordedAt() {
+        Timestamp latest = jdbcTemplate.queryForObject(LATEST_POSITION_RECORDED_AT_SQL, Timestamp.class);
+        return latest == null ? Instant.EPOCH : latest.toInstant();
     }
 
     public List<PositionSample> positionsSince(UUID vehicleId, Instant since, Instant horizon) {

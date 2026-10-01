@@ -4,6 +4,7 @@ import dev.fleetpulse.geocore.MotionState;
 import dev.fleetpulse.processor.alerts.AlertRuleDispatcher;
 import dev.fleetpulse.processor.eta.EtaRecalculationDispatcher;
 import dev.fleetpulse.processor.geofencing.GeofenceRuleDispatcher;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -127,6 +129,7 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
     private final GeofenceRuleDispatcher geofenceRuleDispatcher;
     private final EtaRecalculationDispatcher etaRecalculationDispatcher;
     private final AlertRuleDispatcher alertRuleDispatcher;
+    private final TelemetryActivity telemetryActivity;
 
     public JdbcTelemetryPositionWriter(
         JdbcTemplate jdbcTemplate,
@@ -135,11 +138,27 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
         EtaRecalculationDispatcher etaRecalculationDispatcher,
         AlertRuleDispatcher alertRuleDispatcher
     ) {
+        this(
+            jdbcTemplate, motionStreakTracker, geofenceRuleDispatcher, etaRecalculationDispatcher, alertRuleDispatcher,
+            new TelemetryActivity()
+        );
+    }
+
+    @Autowired
+    public JdbcTelemetryPositionWriter(
+        JdbcTemplate jdbcTemplate,
+        VehicleMotionStreakTracker motionStreakTracker,
+        GeofenceRuleDispatcher geofenceRuleDispatcher,
+        EtaRecalculationDispatcher etaRecalculationDispatcher,
+        AlertRuleDispatcher alertRuleDispatcher,
+        TelemetryActivity telemetryActivity
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.motionStreakTracker = motionStreakTracker;
         this.geofenceRuleDispatcher = geofenceRuleDispatcher;
         this.etaRecalculationDispatcher = etaRecalculationDispatcher;
         this.alertRuleDispatcher = alertRuleDispatcher;
+        this.telemetryActivity = telemetryActivity;
     }
 
     @Override
@@ -147,6 +166,10 @@ public class JdbcTelemetryPositionWriter implements TelemetryPositionWriter {
         if (messages.isEmpty()) {
             return;
         }
+        // Recorded before the insert: the scheduled trip/rollup tasks skip
+        // idle runs based on this, so it must never miss a batch.
+        messages.stream().map(TelemetryMessage::recordedAt).max(Comparator.naturalOrder())
+            .ifPresent(telemetryActivity::recordPersisted);
         jdbcTemplate.batchUpdate(INSERT_SQL, new BatchPreparedStatementSetter() {
             @Override
             public void setValues(PreparedStatement ps, int i) throws SQLException {

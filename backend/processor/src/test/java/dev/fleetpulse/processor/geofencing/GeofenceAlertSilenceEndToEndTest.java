@@ -21,6 +21,7 @@ import dev.fleetpulse.processor.eta.SinuosityEtaCalculator;
 import dev.fleetpulse.processor.mqtt.SecuredMosquittoTestSupport;
 import dev.fleetpulse.processor.telemetry.JdbcTelemetryPositionWriter;
 import dev.fleetpulse.processor.telemetry.TelemetryImplausibilityFilter;
+import dev.fleetpulse.processor.telemetry.TelemetryActivity;
 import dev.fleetpulse.processor.telemetry.TelemetryMessageListener;
 import dev.fleetpulse.processor.telemetry.TelemetryMqttConfig;
 import dev.fleetpulse.processor.telemetry.TelemetryPayloadParser;
@@ -316,7 +317,7 @@ class GeofenceAlertSilenceEndToEndTest {
             JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
             JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
             JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, AlertRuleDispatcher.class,
-            JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
+            JdbcTelemetryPositionWriter.class, TelemetryActivity.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
         return ctx;

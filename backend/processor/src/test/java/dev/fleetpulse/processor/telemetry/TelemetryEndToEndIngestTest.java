@@ -229,7 +229,7 @@ class TelemetryEndToEndIngestTest {
             JdbcVehicleDestinationReader.class, JdbcRecentSpeedReader.class, SinuosityEtaCalculator.class,
             JdbcVehicleDestinationEtaWriter.class, EtaRecalculationDispatcher.class,
             JdbcAlertWriter.class, JdbcAlertSilenceStateStore.class, AlertRuleDispatcher.class,
-            JdbcTelemetryPositionWriter.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
+            JdbcTelemetryPositionWriter.class, TelemetryActivity.class, TelemetryPositionBuffer.class, TelemetryMessageListener.class
         );
         ctx.refresh();
         return ctx;
