@@ -1,6 +1,7 @@
 package dev.fleetpulse.domain;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.util.List;
@@ -16,6 +17,11 @@ public interface MqttCredentialRepository extends JpaRepository<MqttCredential, 
     // comparison semantics exclude those rows automatically, no extra
     // predicate needed.
     List<MqttCredential> findByExpiresAtBefore(Instant instant);
+
+    // Lets the purge task know when the next browser credential can expire;
+    // MIN ignores the null expiresAt of device credentials.
+    @Query("select min(c.expiresAt) from MqttCredential c")
+    Optional<Instant> findEarliestExpiresAt();
 
     // Tasks 4.2/4.3: revoke() marks revokedAt but never deletes the row (kept
     // for audit history), so a device's CURRENT credential is the one row
