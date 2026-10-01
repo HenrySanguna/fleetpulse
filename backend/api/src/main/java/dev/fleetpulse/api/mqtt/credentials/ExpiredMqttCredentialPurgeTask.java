@@ -10,6 +10,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
@@ -33,18 +34,31 @@ public class ExpiredMqttCredentialPurgeTask {
 
     private final ObjectProvider<MqttCredentialRepository> mqttCredentials;
     private final MosquittoDynamicSecurityAdminClient adminClient;
+    private final MqttCredentialExpiryTracker expiryTracker;
+    private final Clock clock;
 
     public ExpiredMqttCredentialPurgeTask(
             ObjectProvider<MqttCredentialRepository> mqttCredentials,
-            MosquittoDynamicSecurityAdminClient adminClient) {
+            MosquittoDynamicSecurityAdminClient adminClient,
+            MqttCredentialExpiryTracker expiryTracker,
+            Clock clock) {
         this.mqttCredentials = mqttCredentials;
         this.adminClient = adminClient;
+        this.expiryTracker = expiryTracker;
+        this.clock = clock;
     }
 
     @Scheduled(fixedDelay = PURGE_INTERVAL_MILLIS)
     public void purgeExpiredCredentials() {
+        Instant now = clock.instant();
+        // Skipping keeps the Neon compute suspended while nothing can have
+        // expired; the tracker is unknown until the first run succeeds.
+        if (expiryTracker.canSkip(now)) {
+            return;
+        }
         MqttCredentialRepository repository = mqttCredentials.getObject();
-        List<MqttCredential> expired = repository.findByExpiresAtBefore(Instant.now());
+        expiryTracker.startPurge();
+        List<MqttCredential> expired = repository.findByExpiresAtBefore(now);
         for (MqttCredential credential : expired) {
             try {
                 adminClient.deleteClient(credential.getUsername());
@@ -56,5 +70,6 @@ public class ExpiredMqttCredentialPurgeTask {
             }
             repository.delete(credential);
         }
+        expiryTracker.finishPurge(repository.findEarliestExpiresAt());
     }
 }

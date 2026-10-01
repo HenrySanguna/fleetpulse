@@ -37,6 +37,7 @@ public class BrowserMqttCredentialService {
     private final MosquittoDynamicSecurityAdminClient adminClient;
     private final ObjectProvider<UserRepository> users;
     private final ObjectProvider<MqttCredentialRepository> mqttCredentials;
+    private final MqttCredentialExpiryTracker expiryTracker;
     private final PasswordEncoder passwordEncoder;
     private final FleetpulseMqttBrowserCredentialProperties browserProperties;
     private final SecureRandom random = new SecureRandom();
@@ -45,11 +46,13 @@ public class BrowserMqttCredentialService {
             MosquittoDynamicSecurityAdminClient adminClient,
             ObjectProvider<UserRepository> users,
             ObjectProvider<MqttCredentialRepository> mqttCredentials,
+            MqttCredentialExpiryTracker expiryTracker,
             PasswordEncoder passwordEncoder,
             FleetpulseMqttBrowserCredentialProperties browserProperties) {
         this.adminClient = adminClient;
         this.users = users;
         this.mqttCredentials = mqttCredentials;
+        this.expiryTracker = expiryTracker;
         this.passwordEncoder = passwordEncoder;
         this.browserProperties = browserProperties;
     }
@@ -75,6 +78,7 @@ public class BrowserMqttCredentialService {
         MqttCredential credential = MqttCredential
             .forDispatcherSession(username, passwordEncoder.encode(rawPassword), user, expiresAt);
         mqttCredentials.getObject().save(credential);
+        expiryTracker.recordIssued(expiresAt);
 
         return new MqttCredentialsResponse(username, rawPassword, browserProperties.wsUrl(), expiresAt);
     }
