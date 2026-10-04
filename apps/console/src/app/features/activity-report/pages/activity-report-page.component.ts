@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, type OnInit, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { DatePicker } from 'primeng/datepicker';
 import type { ActivityTripRow, DailyDistancePoint } from '../models/activity-report.model';
-import { defaultActivityReportRange } from '../services/activity-report-range';
+import { type ActivityReportRange, defaultActivityReportRange, toActivityReportRange } from '../services/activity-report-range';
 import { ActivityReportStore } from '../services/activity-report.store';
 
 interface ChartBar {
@@ -53,24 +56,6 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h ${String(minutes).padStart(2, '0')}`;
 }
 
-// Presentational-only, computed relative to "now" (like AlertsService's
-// todayAt/yesterdayAt) so it never goes stale -- not wired to any actual
-// filtering, see the page's own doc comment. Built from the SAME
-// defaultActivityReportRange() the store uses to build its real HTTP
-// request, so this label can never silently drift from the range the
-// backend actually queried.
-function buildDateRangeLabel(): string {
-  const { from: start, to: end } = defaultActivityReportRange();
-  const endLabel = end.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-  // A bare day-of-month for `start` (e.g. "28 – 3 sept 2026") reads as if
-  // both dates share September when the 7-day window crosses a month
-  // boundary -- only safe to drop the month when start and end are
-  // actually in the same one.
-  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
-  const startLabel = sameMonth ? String(start.getDate()) : start.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-  return `${startLabel} – ${endLabel}`;
-}
-
 // Task 4.3: ActivityTripRow.startedAt/endedAt are now raw ISO-8601 instants
 // (backend: ActivityTripResponse), not the mock's pre-formatted date/
 // startTime/endTime strings -- same "raw data in, format at the
@@ -103,9 +88,14 @@ function formatSpeedKmh(speedKmh: number): string {
   return `${Math.round(speedKmh)}`;
 }
 
+function initialRangeValue(range: ActivityReportRange | undefined): Date[] {
+  const { from, to } = range ?? defaultActivityReportRange();
+  return [from, to];
+}
+
 @Component({
   selector: 'app-activity-report-page',
-  imports: [],
+  imports: [ReactiveFormsModule, DatePicker],
   templateUrl: './activity-report-page.component.html',
   styleUrl: './activity-report-page.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -120,10 +110,12 @@ export class ActivityReportPageComponent implements OnInit {
   protected readonly trips = this.store.trips;
   protected readonly inProgressTrip = this.store.inProgressTrip;
 
-  // Static display only -- the date-range control is not wired to any
-  // filtering yet (scope-bounded per this screen's task: only the vehicle
-  // selector needs to actually switch the rendered dataset).
-  protected readonly dateRangeLabel = buildDateRangeLabel();
+  // [from, to] once a range is complete; [from, null] while the user has
+  // only clicked the first day.
+  protected readonly rangeControl = new FormControl<Array<Date | null> | null>(initialRangeValue(this.store.range()));
+  protected readonly maxDate = new Date();
+  private readonly rangeValue = toSignal(this.rangeControl.valueChanges, { initialValue: this.rangeControl.value });
+  protected readonly hasRange = computed(() => !!this.rangeValue()?.[0]);
 
   protected readonly chartBars = computed(() => buildChartBars(this.store.dailyDistances()));
 
@@ -157,6 +149,11 @@ export class ActivityReportPageComponent implements OnInit {
   }
 
   protected generateReport(): void {
+    const [firstDay, lastDay] = this.rangeControl.value ?? [];
+    if (!firstDay) {
+      return;
+    }
+    this.store.setRange(toActivityReportRange(firstDay, lastDay ?? null));
     this.store.loadReport();
   }
 

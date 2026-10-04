@@ -1,12 +1,14 @@
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { ActivityReport, ActivityVehicleOption } from '../models/activity-report.model';
-import { defaultActivityReportRange } from './activity-report-range';
+import { type ActivityReportRange, defaultActivityReportRange } from './activity-report-range';
 import { ActivityReportService } from './activity-report.service';
 
 interface ActivityReportStoreState {
   readonly vehicles: readonly ActivityVehicleOption[];
   readonly selectedVehicleId: string | undefined;
+  // undefined means "the default last-7-days range, resolved at request time".
+  readonly range: ActivityReportRange | undefined;
   readonly report: ActivityReport | undefined;
   readonly loading: boolean;
   readonly error: string | undefined;
@@ -15,6 +17,7 @@ interface ActivityReportStoreState {
 const INITIAL_STATE: ActivityReportStoreState = {
   vehicles: [],
   selectedVehicleId: undefined,
+  range: undefined,
   report: undefined,
   loading: false,
   error: undefined,
@@ -47,7 +50,7 @@ export const ActivityReportStore = signalStore(
         return;
       }
       const requestId = ++latestRequestId;
-      const range = defaultActivityReportRange();
+      const range = store.range() ?? defaultActivityReportRange();
       patchState(store, { loading: true, error: undefined });
       activityReportService.getReport(vehicleId, range.from.toISOString(), range.to.toISOString()).subscribe({
         next: (report) => {
@@ -92,6 +95,10 @@ export const ActivityReportStore = signalStore(
       selectVehicle(vehicleId: string): void {
         patchState(store, { selectedVehicleId: vehicleId });
         loadReport();
+      },
+
+      setRange(range: ActivityReportRange): void {
+        patchState(store, { range });
       },
 
       loadReport,

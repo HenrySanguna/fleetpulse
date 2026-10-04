@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { FormControl } from '@angular/forms';
 import { of } from 'rxjs';
 import type { ActivityReport, ActivityVehicleOption } from '../models/activity-report.model';
 import { ActivityReportService } from '../services/activity-report.service';
@@ -201,17 +202,70 @@ describe('ActivityReportPageComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('[data-testid="activity-trip-row"]').length).toBe(1);
   });
 
-  it('includes the month on both ends of the date-range label when the 7-day window crosses a month boundary', () => {
-    // Sept 3 minus 6 days lands in August -- a bare "28" for the start
-    // would misleadingly read as August 28th being inside September.
+  function rangeControl(fixture: ReturnType<typeof createFixture>): FormControl<Array<Date | null> | null> {
+    return (fixture.componentInstance as unknown as { rangeControl: FormControl<Array<Date | null> | null> }).rangeControl;
+  }
+
+  function generateButton(fixture: ReturnType<typeof createFixture>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('[data-testid="activity-generate-report"]');
+  }
+
+  it('starts the range picker on the default last-7-days range and requests exactly that range', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 8, 3)); // month is 0-indexed: 8 = September
+    vi.setSystemTime(new Date(2026, 8, 17, 12, 0, 0));
     const fixture = createFixture();
 
-    const label: HTMLElement = fixture.nativeElement.querySelector('.date-display');
-    expect(label.textContent).toMatch(/ago\.?.*–.*sept\.?/);
+    const [from, to] = rangeControl(fixture).value as Date[];
+    expect(from).toEqual(new Date(2026, 8, 11, 12, 0, 0));
+    expect(to).toEqual(new Date(2026, 8, 17, 12, 0, 0));
+    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042', from.toISOString(), to.toISOString());
+    expect(fixture.nativeElement.querySelector('[data-testid="activity-date-range"]')).not.toBeNull();
 
     vi.useRealTimers();
+  });
+
+  it('applies the picked range when "Generar informe" is clicked, covering whole days', () => {
+    const fixture = createFixture();
+    activityReportService.getReport.mockClear();
+
+    rangeControl(fixture).setValue([new Date(2026, 7, 1, 9, 0), new Date(2026, 7, 10, 9, 0)]);
+    fixture.detectChanges();
+    generateButton(fixture).click();
+    fixture.detectChanges();
+
+    expect(activityReportService.getReport).toHaveBeenCalledWith(
+      'VH-1042',
+      new Date(2026, 7, 1, 0, 0, 0, 0).toISOString(),
+      new Date(2026, 7, 10, 23, 59, 59, 999).toISOString(),
+    );
+  });
+
+  it('keeps the applied range when the vehicle changes', () => {
+    const fixture = createFixture();
+    rangeControl(fixture).setValue([new Date(2026, 7, 1), new Date(2026, 7, 10)]);
+    fixture.detectChanges();
+    generateButton(fixture).click();
+    fixture.detectChanges();
+
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('[data-testid="activity-vehicle-select"]');
+    select.value = 'VH-0892';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(activityReportService.getReport).toHaveBeenLastCalledWith(
+      'VH-0892',
+      new Date(2026, 7, 1, 0, 0, 0, 0).toISOString(),
+      new Date(2026, 7, 10, 23, 59, 59, 999).toISOString(),
+    );
+  });
+
+  it('disables "Generar informe" while no range is selected', () => {
+    const fixture = createFixture();
+
+    rangeControl(fixture).setValue(null);
+    fixture.detectChanges();
+
+    expect(generateButton(fixture).disabled).toBe(true);
   });
 
   it('clicking "Generar informe" re-triggers loading the selected vehicle\'s report', () => {

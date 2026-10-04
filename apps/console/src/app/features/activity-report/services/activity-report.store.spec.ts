@@ -176,4 +176,49 @@ describe('ActivityReportStore', () => {
     expect(store.selectedVehicleId()).toBeUndefined();
     expect(store.report()).toBeUndefined();
   });
+
+  it('sends the default last-7-days range until a range is set', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 17, 12, 0, 0));
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockReturnValue(of(reportByVehicle['VH-1042']));
+
+    store.loadVehicles();
+
+    const [, from, to] = activityReportService.getReport.mock.calls[0] as [string, string, string];
+    expect(new Date(from)).toEqual(new Date(2026, 8, 11, 12, 0, 0));
+    expect(new Date(to)).toEqual(new Date(2026, 8, 17, 12, 0, 0));
+
+    vi.useRealTimers();
+  });
+
+  it('setRange() makes the next report request use the selected from/to', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockReturnValue(of(reportByVehicle['VH-1042']));
+    store.loadVehicles();
+    activityReportService.getReport.mockClear();
+    const from = new Date(2026, 7, 1, 0, 0, 0, 0);
+    const to = new Date(2026, 7, 10, 23, 59, 59, 999);
+
+    store.setRange({ from, to });
+    store.loadReport();
+
+    expect(activityReportService.getReport).toHaveBeenCalledWith('VH-1042', from.toISOString(), to.toISOString());
+  });
+
+  it('keeps the selected range when switching vehicle, and reset() restores the default', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockImplementation((vehicleId: string) => of(reportByVehicle[vehicleId]));
+    store.loadVehicles();
+    const from = new Date(2026, 7, 1, 0, 0, 0, 0);
+    const to = new Date(2026, 7, 10, 23, 59, 59, 999);
+    store.setRange({ from, to });
+
+    store.selectVehicle('VH-0892');
+
+    expect(activityReportService.getReport).toHaveBeenLastCalledWith('VH-0892', from.toISOString(), to.toISOString());
+
+    store.reset();
+    expect(store.range()).toBeUndefined();
+  });
 });
