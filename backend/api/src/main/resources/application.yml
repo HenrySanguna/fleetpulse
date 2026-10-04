@@ -1,4 +1,7 @@
 fleetpulse:
+  fleet:
+    state:
+      online-staleness-threshold: 5m
   cors:
     allowed-origin-patterns:
       - http://localhost:4200

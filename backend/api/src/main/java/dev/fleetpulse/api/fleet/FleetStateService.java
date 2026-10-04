@@ -5,6 +5,8 @@ import dev.fleetpulse.domain.VehicleRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,9 +26,18 @@ public class FleetStateService {
     private final ObjectProvider<VehicleRepository> vehicles;
     private final VehicleStateJdbcReader stateReader;
 
-    FleetStateService(ObjectProvider<VehicleRepository> vehicles, VehicleStateJdbcReader stateReader) {
+    private final Clock clock;
+    private final FleetpulseFleetStateProperties properties;
+
+    FleetStateService(
+            ObjectProvider<VehicleRepository> vehicles,
+            VehicleStateJdbcReader stateReader,
+            Clock clock,
+            FleetpulseFleetStateProperties properties) {
         this.vehicles = vehicles;
         this.stateReader = stateReader;
+        this.clock = clock;
+        this.properties = properties;
     }
 
     public FleetStateResponse currentState(UUID organizationId) {
@@ -34,14 +45,15 @@ public class FleetStateService {
         List<UUID> vehicleIds = orgVehicles.stream().map(Vehicle::getId).toList();
         Map<UUID, VehicleStateRow> states = stateReader.findByVehicleIds(vehicleIds);
 
+        Instant now = clock.instant();
         List<VehicleStateResponse> responses = orgVehicles.stream()
-            .map(vehicle -> toResponse(vehicle, states.get(vehicle.getId())))
+            .map(vehicle -> toResponse(vehicle, states.get(vehicle.getId()), now))
             .toList();
 
         return new FleetStateResponse(responses);
     }
 
-    private static VehicleStateResponse toResponse(Vehicle vehicle, VehicleStateRow row) {
+    private VehicleStateResponse toResponse(Vehicle vehicle, VehicleStateRow row, Instant now) {
         if (row == null) {
             return new VehicleStateResponse(
                 vehicle.getId(), vehicle.getLabel(), null, null, null, null, false, null, null, null, null, null
@@ -54,12 +66,18 @@ public class FleetStateService {
             row.lon(),
             row.recordedAt(),
             row.motionState(),
-            row.online(),
+            isOnline(row, now),
             row.destinationLat(),
             row.destinationLon(),
             row.etaSeconds(),
             row.etaMarginSeconds(),
             row.etaCalculatedAt()
         );
+    }
+
+    private boolean isOnline(VehicleStateRow row, Instant now) {
+        return row.online()
+            && row.recordedAt() != null
+            && row.recordedAt().isAfter(now.minus(properties.onlineStalenessThreshold()));
     }
 }
