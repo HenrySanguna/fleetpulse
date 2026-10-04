@@ -1,3 +1,4 @@
+<p-confirmdialog />
 <div class="flex h-full">
   <aside class="sidebar flex w-80 shrink-0 flex-col overflow-hidden">
     <div class="sidebar-head flex items-center justify-between">
@@ -68,6 +69,17 @@
           styleClass="w-full"
           (onClick)="save()"
         />
+        @if (selected()) {
+          <p-button
+            data-testid="delete-geofence"
+            label="Eliminar geocerca"
+            severity="danger"
+            [outlined]="true"
+            [disabled]="deleting()"
+            styleClass="w-full"
+            (onClick)="confirmDelete()"
+          />
+        }
       }
     </form>
   </aside>

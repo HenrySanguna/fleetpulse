@@ -106,4 +106,34 @@ describe('GeofenceService', () => {
     expect(result).toEqual(response);
     expect(store.geofences()).toEqual([response]);
   });
+
+  it('delete() sends a credentialed DELETE with responseType "json" and removes the geofence from the store on 204', () => {
+    store.setGeofences([{ id: 'g1', name: 'Depot' }, { id: 'g2', name: 'Port' }]);
+    let completed = false;
+
+    service.delete('g1').subscribe({ complete: () => (completed = true) });
+
+    const request = httpMock.expectOne('http://localhost:8099/api/geofences/g1');
+    expect(request.request.method).toBe('DELETE');
+    expect(request.request.withCredentials).toBe(true);
+    expect(request.request.responseType).toBe('json');
+    expect(store.geofences().length).toBe(2);
+
+    request.flush(null, { status: 204, statusText: 'No Content' });
+
+    expect(completed).toBe(true);
+    expect(store.geofences()).toEqual([{ id: 'g2', name: 'Port' }]);
+  });
+
+  it('delete() keeps the geofence in the store and surfaces the error when the request fails', () => {
+    store.setGeofences([{ id: 'g1', name: 'Depot' }]);
+    let failed = false;
+
+    service.delete('g1').subscribe({ error: () => (failed = true) });
+
+    httpMock.expectOne('http://localhost:8099/api/geofences/g1').flush('nope', { status: 403, statusText: 'Forbidden' });
+
+    expect(failed).toBe(true);
+    expect(store.geofences()).toEqual([{ id: 'g1', name: 'Depot' }]);
+  });
 });

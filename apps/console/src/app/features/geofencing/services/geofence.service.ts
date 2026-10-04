@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
 import { tap } from 'rxjs';
 import { GeofenceControllerService, type GeofenceRequest, type GeofenceResponse } from '@fleetpulse/api-client';
-import { getJson, postJson, putJson } from '../../../core/http/api-client-json-get';
+import { deleteVoid, getJson, postJson, putJson } from '../../../core/http/api-client-json-get';
 import { GeofenceStore } from './geofence.store';
 
 // Tasks 5.1-5.3: HTTP orchestration for the existing CRUD backend (WU6).
@@ -40,5 +40,9 @@ export class GeofenceService {
     return putJson<GeofenceResponse>(this.http, this.api.configuration, `/api/geofences/${id}`, request).pipe(
       tap((response) => this.store.upsertGeofence(response)),
     );
+  }
+
+  delete(id: string): Observable<void> {
+    return deleteVoid(this.http, this.api.configuration, `/api/geofences/${id}`).pipe(tap(() => this.store.removeGeofence(id)));
   }
 }

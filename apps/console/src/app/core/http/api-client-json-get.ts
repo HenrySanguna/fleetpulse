@@ -68,6 +68,13 @@ export function patchJson<T>(http: HttpClient, configuration: Configuration, pat
   return http.patch<T>(`${configuration.basePath}${path}`, null, { withCredentials: configuration.withCredentials });
 }
 
+// Same gap as the helpers above: a generated bodyless DELETE method would hit
+// the identical responseType:'blob' misclassification. The backend replies
+// 204 with no body, so the (null) body is discarded.
+export function deleteVoid(http: HttpClient, configuration: Configuration, path: string): Observable<void> {
+  return http.delete(`${configuration.basePath}${path}`, { withCredentials: configuration.withCredentials }).pipe(map(() => undefined));
+}
+
 // `/login` and `/logout` (Task 5.4/auth) aren't part of the OpenAPI-generated
 // surface at all -- they're Spring Security's own default endpoints, not
 // backed by a generated *ControllerService -- so this isn't the Accept-header

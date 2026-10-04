@@ -52,6 +52,13 @@ export const GeofenceStore = signalStore(
       patchState(store, { geofences: next });
     },
 
+    removeGeofence(id: string): void {
+      patchState(store, {
+        geofences: store.geofences().filter((g) => g.id !== id),
+        selectedId: store.selectedId() === id ? undefined : store.selectedId(),
+      });
+    },
+
     select(id: string | undefined): void {
       patchState(store, { selectedId: id });
     },
