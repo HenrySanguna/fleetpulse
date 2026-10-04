@@ -94,7 +94,8 @@ describe('AlertsPageComponent', () => {
     const fixture = createFixture();
 
     const sub: HTMLElement = fixture.nativeElement.querySelector('.page-sub');
-    expect(sub.textContent).toContain('2 sin atender de 3');
+    expect(sub.textContent?.trim()).toBe('2 sin atender de 3 alertas');
+    expect(sub.textContent).not.toContain('24 horas');
   });
 
   it('clicking a type filter chip narrows the rendered cards and marks it active', () => {
