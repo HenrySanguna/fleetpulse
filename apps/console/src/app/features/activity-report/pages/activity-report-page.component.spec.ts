@@ -235,8 +235,8 @@ describe('ActivityReportPageComponent', () => {
 
     expect(activityReportService.getReport).toHaveBeenCalledWith(
       'VH-1042',
-      new Date(2026, 7, 1, 0, 0, 0, 0).toISOString(),
-      new Date(2026, 7, 10, 23, 59, 59, 999).toISOString(),
+      new Date(Date.UTC(2026, 7, 1, 0, 0, 0, 0)).toISOString(),
+      new Date(Date.UTC(2026, 7, 10, 23, 59, 59, 999)).toISOString(),
     );
   });
 
@@ -254,8 +254,8 @@ describe('ActivityReportPageComponent', () => {
 
     expect(activityReportService.getReport).toHaveBeenLastCalledWith(
       'VH-0892',
-      new Date(2026, 7, 1, 0, 0, 0, 0).toISOString(),
-      new Date(2026, 7, 10, 23, 59, 59, 999).toISOString(),
+      new Date(Date.UTC(2026, 7, 1, 0, 0, 0, 0)).toISOString(),
+      new Date(Date.UTC(2026, 7, 10, 23, 59, 59, 999)).toISOString(),
     );
   });
 
