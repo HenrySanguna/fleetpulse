@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 // Task 4.2 ("tabla vehicle_daily derivada de la horaria"), resolved as a
 // pure SQL aggregation over the just-recomputed vehicle_hourly rows, not a
@@ -25,19 +26,20 @@ import java.time.Instant;
 // recomputation, which would re-run this GROUP BY once per hourly row
 // instead of once per batch).
 //
-// ON CONFLICT (vehicle_id, day) DO UPDATE gives vehicle_daily the exact same
-// idempotent-recompute story as vehicle_hourly (tasks 5.4/5.5): re-running
-// this statement over the same closed hours yields the same totals, and a
-// still-in-progress "today" is intentionally recomputed on every run too --
-// its row converges to the complete day's totals as more of today's hours
-// close, the same "idempotent, converges as data arrives" spirit as the
-// hourly recompute's own late-telemetry story, just at day granularity for
-// an in-progress day instead of late-arriving data for an already-closed
-// one. `day` uses `hour AT TIME ZONE 'UTC'` (see V13's own migration
-// comment for why UTC, not a per-organization timezone). GROUP BY naturally
-// only emits a day for a (vehicle_id, day) pair that actually has at least
-// one vehicle_hourly row in the recomputed window -- a vehicle with no
-// activity that day gets no spurious zero row.
+// ON CONFLICT (vehicle_id, day) DO UPDATE keeps the recompute idempotent:
+// re-running it over the same hours yields the same totals, and a
+// still-in-progress "today" converges to the complete day's totals as more of
+// its hours close. `day` uses `hour AT TIME ZONE 'UTC'` (see V13's own
+// migration comment for why UTC, not a per-organization timezone).
+//
+// The SUM range starts at the UTC day start of windowStart, NOT at
+// windowStart itself: the window slides every run, so the first day it touches
+// is usually only partially inside it, and summing just the in-window hours
+// would overwrite that day's total with a partial one. vehicle_hourly keeps
+// the older hours of that day, so reading from the day start makes every
+// touched day a complete recompute. GROUP BY only emits a day for a
+// (vehicle_id, day) pair that has at least one vehicle_hourly row in the
+// range -- a vehicle with no activity gets no spurious zero row.
 @Component
 public class JdbcDailyRollupWriter {
 
@@ -63,6 +65,7 @@ public class JdbcDailyRollupWriter {
     }
 
     public void recompute(Instant windowStart, Instant windowEnd) {
-        jdbcTemplate.update(UPSERT_SQL, Timestamp.from(Instant.now()), Timestamp.from(windowStart), Timestamp.from(windowEnd));
+        Instant firstDayStart = windowStart.atZone(ZoneOffset.UTC).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();
+        jdbcTemplate.update(UPSERT_SQL, Timestamp.from(Instant.now()), Timestamp.from(firstDayStart), Timestamp.from(windowEnd));
     }
 }
