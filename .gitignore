@@ -42,3 +42,6 @@ Thumbs.db
 
 ### SDD tooling cache ###
 .atl/
+
+### Playwright MCP artifacts ###
+.playwright-mcp/
