@@ -34,6 +34,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -97,7 +98,7 @@ class FleetStateEndpointTest {
         UUID silentVehicleId = seedVehicle(orgA.getId(), "Truck-A2");
         seedVehicle(orgB.getId(), "Truck-B1");
 
-        Instant recordedAt = Instant.parse("2026-09-14T10:00:00Z");
+        Instant recordedAt = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.SECONDS);
         seedVehicleState(reportingVehicleId, 4.704, -74.049, recordedAt, "MOVING", true);
         // silentVehicleId deliberately gets no vehicle_state row: never
         // reported telemetry, must still appear (offline, null fields).

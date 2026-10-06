@@ -6,8 +6,14 @@ describe('FleetStore', () => {
   let store: InstanceType<typeof FleetStore>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:01:00Z'));
     TestBed.configureTestingModule({});
     store = TestBed.inject(FleetStore);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('starts with an empty fleet', () => {
@@ -157,9 +163,9 @@ describe('FleetStore', () => {
     beforeEach(() => {
       store.applySnapshot({
         vehicles: [
-          { vehicleId: 'v1', label: 'Truck 1', online: true, motionState: 'MOVING' },
-          { vehicleId: 'v2', label: 'Van 2', online: false, motionState: 'STOPPED' },
-          { vehicleId: 'v3', label: 'Truck 3', online: true, motionState: 'STOPPED' },
+          { vehicleId: 'v1', label: 'Truck 1', recordedAt: '2026-01-01T00:00:00Z', online: true, motionState: 'MOVING' },
+          { vehicleId: 'v2', label: 'Van 2', recordedAt: '2026-01-01T00:00:00Z', online: false, motionState: 'STOPPED' },
+          { vehicleId: 'v3', label: 'Truck 3', recordedAt: '2026-01-01T00:00:00Z', online: true, motionState: 'STOPPED' },
         ],
       });
     });
@@ -194,5 +200,51 @@ describe('FleetStore', () => {
 
     store.selectVehicle(undefined);
     expect(store.selectedVehicleId()).toBeUndefined();
+  });
+
+  describe('effective online flag', () => {
+    const snapshot = (recordedAt: string, online = true): FleetStateResponse => ({
+      vehicles: [{ vehicleId: 'v1', lat: 1, lon: 1, recordedAt, online }],
+    });
+
+    it('reports a recently updated vehicle as online', () => {
+      store.applySnapshot(snapshot('2026-01-01T00:00:00Z'));
+
+      expect(store.vehicles().get('v1')?.online).toBe(true);
+    });
+
+    it('reports a vehicle flagged online but silent for over five minutes as offline', () => {
+      store.applySnapshot(snapshot('2025-12-31T23:50:00Z'));
+
+      expect(store.vehicles().get('v1')?.online).toBe(false);
+      store.setFilters({ onlineOnly: true });
+      expect(store.visibleVehicles()).toEqual([]);
+    });
+
+    it('flips to offline over time without a reload when the vehicle stops publishing', () => {
+      store.applySnapshot(snapshot('2026-01-01T00:00:00Z'));
+      expect(store.vehicles().get('v1')?.online).toBe(true);
+
+      vi.advanceTimersByTime(5 * 60 * 1000 + 30_000);
+
+      expect(store.vehicles().get('v1')?.online).toBe(false);
+    });
+
+    it('comes back online when a fresh telemetry update arrives', () => {
+      store.applySnapshot(snapshot('2025-12-31T23:50:00Z'));
+      expect(store.vehicles().get('v1')?.online).toBe(false);
+
+      store.applyUpdate({
+        kind: 'telemetry',
+        vehicleId: 'v1',
+        lat: 2,
+        lon: 2,
+        recordedAt: '2026-01-01T00:00:50Z',
+        speedKmh: 10,
+        heading: 0,
+      });
+
+      expect(store.vehicles().get('v1')?.online).toBe(true);
+    });
   });
 });

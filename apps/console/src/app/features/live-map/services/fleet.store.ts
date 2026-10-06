@@ -1,21 +1,26 @@
 import { computed } from '@angular/core';
-import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
+import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import type { FleetStateResponse, VehicleStateResponse } from '@fleetpulse/api-client';
 import { INITIAL_FLEET_FILTERS, type FleetFilters } from '../models/fleet-filters.model';
 import type { VehicleState } from '../models/vehicle-state.model';
 import type { VehicleUpdate } from './fleet-message.mapper';
+import { isEffectivelyOnline } from './vehicle-online.util';
+
+const CLOCK_TICK_MS = 30_000;
 
 interface FleetStoreState {
-  readonly vehicles: ReadonlyMap<string, VehicleState>;
+  readonly reportedVehicles: ReadonlyMap<string, VehicleState>;
+  readonly nowMs: number;
   readonly filters: FleetFilters;
   readonly selectedVehicleId: string | undefined;
 }
 
-const INITIAL_STATE: FleetStoreState = {
-  vehicles: new Map(),
+const initialState = (): FleetStoreState => ({
+  reportedVehicles: new Map(),
+  nowMs: Date.now(),
   filters: INITIAL_FLEET_FILTERS,
   selectedVehicleId: undefined,
-};
+});
 
 // Task 3.1: stream state, fed by FleetStartupService's snapshot+buffer+live
 // pipeline (design.md: "SignalStore para el stream, httpResource() para
@@ -23,11 +28,22 @@ const INITIAL_STATE: FleetStoreState = {
 // doesn't belong in an httpResource).
 export const FleetStore = signalStore(
   { providedIn: 'root' },
-  withState<FleetStoreState>(INITIAL_STATE),
-  withComputed(({ vehicles, filters }) => ({
-    // Task 3.2
-    visibleVehicles: computed(() => filterVehicles([...vehicles().values()], filters())),
-  })),
+  withState<FleetStoreState>(initialState),
+  withComputed(({ reportedVehicles, nowMs, filters }) => {
+    // The single place the effective online flag is decided: every consumer
+    // (list, detail, filters, map symbols) reads `vehicles`, never the raw map.
+    const vehicles = computed((): ReadonlyMap<string, VehicleState> => {
+      const now = nowMs();
+      return new Map(
+        [...reportedVehicles()].map(([id, vehicle]) => [id, { ...vehicle, online: isEffectivelyOnline(vehicle, now) }]),
+      );
+    });
+    return {
+      vehicles,
+      // Task 3.2
+      visibleVehicles: computed(() => filterVehicles([...vehicles().values()], filters())),
+    };
+  }),
   withMethods((store) => ({
     // A snapshot (GET /api/fleet/state) is always authoritative and fully
     // replaces whatever was known before -- it never merges into it. Called
@@ -41,7 +57,7 @@ export const FleetStore = signalStore(
         }
         vehicles.set(vehicle.vehicleId, toVehicleState(vehicle.vehicleId, vehicle));
       }
-      patchState(store, { vehicles });
+      patchState(store, { reportedVehicles: vehicles });
     },
 
     // Task 2.3: the monotonicity guard lives here so it applies uniformly
@@ -49,7 +65,7 @@ export const FleetStore = signalStore(
     // replay or the live stream afterwards -- both paths call this same
     // method, so there is exactly one place that decides "is this stale".
     applyUpdate(update: VehicleUpdate): void {
-      const current = store.vehicles();
+      const current = store.reportedVehicles();
       const existing = current.get(update.vehicleId);
 
       // Task 2.4/2.5: eta updates carry no recordedAt of their own to
@@ -64,7 +80,7 @@ export const FleetStore = signalStore(
 
       const next = new Map(current);
       next.set(update.vehicleId, mergeUpdate(existing, update));
-      patchState(store, { vehicles: next });
+      patchState(store, { reportedVehicles: next });
     },
 
     setFilters(filters: Partial<FleetFilters>): void {
@@ -83,9 +99,20 @@ export const FleetStore = signalStore(
     },
 
     reset(): void {
-      patchState(store, INITIAL_STATE);
+      patchState(store, initialState());
     },
   })),
+  withHooks((store) => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    return {
+      onInit(): void {
+        timer = setInterval(() => patchState(store, { nowMs: Date.now() }), CLOCK_TICK_MS);
+      },
+      onDestroy(): void {
+        clearInterval(timer);
+      },
+    };
+  }),
 );
 
 function toVehicleState(vehicleId: string, vehicle: VehicleStateResponse): VehicleState {
