@@ -91,6 +91,19 @@
             </tr>
           </thead>
           <tbody class="mono">
+            @if (inProgressTrip(); as trip) {
+              <tr data-testid="activity-trip-row-in-progress">
+                <td>{{ formatTripDate(trip) }}</td>
+                <td>{{ formatTripStart(trip) }}</td>
+                <td>
+                  <span class="trip-end-in-progress">ahora <span class="tag tag-in-progress">En curso</span></span>
+                </td>
+                <td class="num">{{ trip.distanceKm.toFixed(1) }} km</td>
+                <td class="num">{{ formatTripDuration(trip) }}</td>
+                <td class="num">{{ formatTripIdle(trip) }}</td>
+                <td class="num">{{ formatTripMaxSpeed(trip) }}</td>
+              </tr>
+            }
             @for (trip of trips(); track trip.id) {
               <tr data-testid="activity-trip-row">
                 <td>{{ formatTripDate(trip) }}</td>
@@ -104,7 +117,7 @@
             }
           </tbody>
         </table>
-        @if (!loading() && trips().length === 0) {
+        @if (!loading() && trips().length === 0 && !inProgressTrip()) {
           <p class="status-text">No hay viajes registrados para este vehículo en el rango seleccionado.</p>
         }
       </div>

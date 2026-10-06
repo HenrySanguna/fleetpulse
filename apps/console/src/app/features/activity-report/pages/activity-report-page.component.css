@@ -231,3 +231,26 @@ tbody.mono td {
 tr:first-child td {
   border-top: none;
 }
+
+.trip-end-in-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Same .tag shape as AlertsPageComponent's own tag/tag-ack pair -- kept
+   self-contained here since component styles are not shared across
+   features in this codebase. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tag-in-progress {
+  background: var(--fp-success-tint);
+  color: var(--fp-success-tint-text);
+}

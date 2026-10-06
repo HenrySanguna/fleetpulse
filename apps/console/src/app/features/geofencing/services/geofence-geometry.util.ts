@@ -164,11 +164,27 @@ export function geofenceBounds(geofence: GeofenceResponse): [[number, number], [
     return undefined;
   }
   const lats = vertices.map((vertex) => vertex.lat);
-  const lons = vertices.map((vertex) => vertex.lon);
+  const lons = normalizeAntimeridianSpan(vertices.map((vertex) => vertex.lon));
   return [
     [Math.min(...lons), Math.min(...lats)],
     [Math.max(...lons), Math.max(...lats)],
   ];
+}
+
+// R3-bounds-antimeridian: plain min/max longitude picks the LONG way around
+// the globe for a geofence whose vertices straddle the antimeridian (e.g.
+// -179 and 179 -- 2 degrees apart the short way, but ~358 by plain
+// subtraction). A span over 180 degrees is this app's signal for that case
+// (real geofences are small, local shapes -- never intentionally wider than
+// half the globe), so every negative longitude shifts by +360, turning the
+// straddling pair into a normal, narrow span east of 180 (179 and 181).
+// MapLibre's `fitBounds` accepts an east edge past 180.
+function normalizeAntimeridianSpan(lons: readonly number[]): number[] {
+  const span = Math.max(...lons) - Math.min(...lons);
+  if (span <= 180) {
+    return [...lons];
+  }
+  return lons.map((lon) => (lon < 0 ? lon + 360 : lon));
 }
 
 function toCoordinateRing(vertices: readonly GeoPointResponse[]): [number, number][] | undefined {

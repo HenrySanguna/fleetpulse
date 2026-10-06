@@ -118,6 +118,7 @@ export class ActivityReportPageComponent implements OnInit {
   protected readonly loading = this.store.loading;
   protected readonly loadError = this.store.error;
   protected readonly trips = this.store.trips;
+  protected readonly inProgressTrip = this.store.inProgressTrip;
 
   // Static display only -- the date-range control is not wired to any
   // filtering yet (scope-bounded per this screen's task: only the vehicle
@@ -159,19 +160,25 @@ export class ActivityReportPageComponent implements OnInit {
     this.store.loadReport();
   }
 
-  protected formatTripDuration(trip: ActivityTripRow): string {
+  // Task 10: parameter types are widened to just the fields each formatter
+  // actually reads (rather than the full ActivityTripRow) so the same
+  // formatters render both a closed trip row and the in-progress trip row
+  // (ActivityInProgressTrip has no id/endedAt of its own, but shares every
+  // other field) -- no separate copy of this formatting logic for the
+  // in-progress row.
+  protected formatTripDuration(trip: { readonly durationMinutes: number }): string {
     return `${formatHoursMinutes(trip.durationMinutes)}m`;
   }
 
-  protected formatTripIdle(trip: ActivityTripRow): string {
+  protected formatTripIdle(trip: { readonly idleMinutes: number }): string {
     return `${formatHoursMinutes(trip.idleMinutes)}m`;
   }
 
-  protected formatTripDate(trip: ActivityTripRow): string {
+  protected formatTripDate(trip: { readonly startedAt: string }): string {
     return formatShortDate(trip.startedAt);
   }
 
-  protected formatTripStart(trip: ActivityTripRow): string {
+  protected formatTripStart(trip: { readonly startedAt: string }): string {
     return formatShortTime(trip.startedAt);
   }
 
@@ -179,7 +186,7 @@ export class ActivityReportPageComponent implements OnInit {
     return formatShortTime(trip.endedAt);
   }
 
-  protected formatTripMaxSpeed(trip: ActivityTripRow): string {
+  protected formatTripMaxSpeed(trip: { readonly maxSpeedKmh: number }): string {
     return `${formatSpeedKmh(trip.maxSpeedKmh)} km/h`;
   }
 }

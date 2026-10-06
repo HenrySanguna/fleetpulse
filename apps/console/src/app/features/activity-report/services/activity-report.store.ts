@@ -31,6 +31,7 @@ export const ActivityReportStore = signalStore(
     summary: computed(() => report()?.summary),
     dailyDistances: computed(() => report()?.dailyDistances ?? []),
     trips: computed(() => report()?.trips ?? []),
+    inProgressTrip: computed(() => report()?.inProgressTrip),
   })),
   withMethods((store) => {
     const activityReportService = inject(ActivityReportService);

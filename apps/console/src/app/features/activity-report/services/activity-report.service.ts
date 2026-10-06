@@ -5,6 +5,7 @@ import { map } from 'rxjs';
 import {
   ActivityReportControllerService,
   FleetStateControllerService,
+  type ActivityInProgressTripResponse,
   type ActivityReportResponse,
   type ActivityTripResponse,
   type DailyDistancePointResponse,
@@ -12,7 +13,13 @@ import {
   type VehicleStateResponse,
 } from '@fleetpulse/api-client';
 import { getJson } from '../../../core/http/api-client-json-get';
-import type { ActivityReport, ActivityTripRow, ActivityVehicleOption, DailyDistancePoint } from '../models/activity-report.model';
+import type {
+  ActivityInProgressTrip,
+  ActivityReport,
+  ActivityTripRow,
+  ActivityVehicleOption,
+  DailyDistancePoint,
+} from '../models/activity-report.model';
 
 // Task 4.3 (real backend wiring, replacing the provisional MOCK_REPORTS this
 // file previously fabricated -- see the launch prompt's own note that this
@@ -81,6 +88,23 @@ function toTripRow(trip: ActivityTripResponse): ActivityTripRow {
   };
 }
 
+// Task 10: unlike every other field here, inProgressTrip is genuinely
+// optional on the wire (ActivityReportResponse.inProgressTrip, null for a
+// past range or a vehicle that is not currently in a trip) -- so this maps
+// it only when present rather than failing loudly on a missing field.
+function toInProgressTrip(trip: ActivityInProgressTripResponse | undefined): ActivityInProgressTrip | undefined {
+  if (!trip) {
+    return undefined;
+  }
+  return {
+    startedAt: required(trip.startedAt, 'inProgressTrip.startedAt'),
+    distanceKm: required(trip.distanceKm, 'inProgressTrip.distanceKm'),
+    durationMinutes: required(trip.durationMinutes, 'inProgressTrip.durationMinutes'),
+    idleMinutes: required(trip.idleMinutes, 'inProgressTrip.idleMinutes'),
+    maxSpeedKmh: required(trip.maxSpeedKmh, 'inProgressTrip.maxSpeedKmh'),
+  };
+}
+
 function toReport(response: ActivityReportResponse): ActivityReport {
   const summary = required(response.summary, 'summary');
   return {
@@ -99,6 +123,7 @@ function toReport(response: ActivityReportResponse): ActivityReport {
     },
     dailyDistances: (response.dailyDistances ?? []).map(toDailyPoint),
     trips: (response.trips ?? []).map(toTripRow),
+    inProgressTrip: toInProgressTrip(response.inProgressTrip),
   };
 }
 

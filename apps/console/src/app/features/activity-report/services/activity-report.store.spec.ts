@@ -45,6 +45,9 @@ describe('ActivityReportStore', () => {
           maxSpeedKmh: 58,
         },
       ],
+      // Task 10: this vehicle is currently in an unclosed trip -- exercises
+      // the store's own inProgressTrip computed selector.
+      inProgressTrip: { startedAt: '2026-09-14T09:40:00Z', distanceKm: 5.4, durationMinutes: 12, idleMinutes: 0, maxSpeedKmh: 62 },
     },
   };
 
@@ -64,6 +67,7 @@ describe('ActivityReportStore', () => {
     expect(store.summary()).toBeUndefined();
     expect(store.dailyDistances()).toEqual([]);
     expect(store.trips()).toEqual([]);
+    expect(store.inProgressTrip()).toBeUndefined();
   });
 
   it('loadVehicles() stores the vehicle list and auto-selects and loads the first vehicle', () => {
@@ -91,6 +95,22 @@ describe('ActivityReportStore', () => {
     expect(store.summary()).toEqual(reportByVehicle['VH-0892'].summary);
     expect(store.dailyDistances()).toEqual(reportByVehicle['VH-0892'].dailyDistances);
     expect(store.trips()).toEqual(reportByVehicle['VH-0892'].trips);
+    expect(store.inProgressTrip()).toEqual(reportByVehicle['VH-0892'].inProgressTrip);
+  });
+
+  // Task 10: VH-1042's own fixture has no inProgressTrip at all (a past
+  // range, or a vehicle that is not currently in a trip) -- switching back
+  // to it must not keep showing VH-0892's in-progress trip.
+  it('inProgressTrip() is undefined for a report that has none, even after a report that did', () => {
+    activityReportService.listVehicles.mockReturnValue(of(vehicles));
+    activityReportService.getReport.mockImplementation((vehicleId: string) => of(reportByVehicle[vehicleId]));
+    store.loadVehicles();
+    store.selectVehicle('VH-0892');
+    expect(store.inProgressTrip()).toBeDefined();
+
+    store.selectVehicle('VH-1042');
+
+    expect(store.inProgressTrip()).toBeUndefined();
   });
 
   it('loadReport() records an error and clears loading when the service errors', () => {
