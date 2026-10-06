@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, s
 import { toSignal } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
+import { ConfirmationService } from 'primeng/api';
 import { Button } from 'primeng/button';
+import { ConfirmDialog } from 'primeng/confirmdialog';
 import { InputNumber } from 'primeng/inputnumber';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
@@ -64,15 +66,17 @@ function setControlDisabled(control: AbstractControl, disabled: boolean, options
 // itself has no knowledge of name/rule/dwellSecs or HTTP.
 @Component({
   selector: 'app-geofence-editor-page',
-  imports: [ReactiveFormsModule, Button, InputNumber, InputText, Select, GeofenceDrawingEditorComponent],
+  imports: [ReactiveFormsModule, Button, ConfirmDialog, InputNumber, InputText, Select, GeofenceDrawingEditorComponent],
   templateUrl: './geofence-editor-page.component.html',
   styleUrl: './geofence-editor-page.component.css',
+  providers: [ConfirmationService],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GeofenceEditorPageComponent implements OnInit {
   private readonly geofenceService = inject(GeofenceService);
   private readonly store = inject(GeofenceStore);
   private readonly authStore = inject(AuthStore);
+  private readonly confirmationService = inject(ConfirmationService);
 
   protected readonly geofences = this.store.geofences;
   protected readonly loading = this.store.loading;
@@ -88,6 +92,7 @@ export class GeofenceEditorPageComponent implements OnInit {
   protected readonly resetToken = signal(0);
   protected readonly draft = signal<GeofenceDraft | undefined>(undefined);
   protected readonly saving = signal(false);
+  protected readonly deleting = signal(false);
   protected readonly saveError = signal<string | undefined>(undefined);
 
   protected readonly form = new FormGroup<GeofenceFormControls>(
@@ -208,6 +213,43 @@ export class GeofenceEditorPageComponent implements OnInit {
           error instanceof HttpErrorResponse && error.status === 403
             ? 'No tienes permiso para gestionar geocercas.'
             : 'No se pudo guardar la geocerca. Verifica la forma e inténtalo de nuevo.',
+        );
+      },
+    });
+  }
+
+  protected confirmDelete(): void {
+    const selected = this.selected();
+    if (!this.canManageGeofences() || !selected?.id) {
+      return;
+    }
+    const id = selected.id;
+    this.confirmationService.confirm({
+      header: 'Eliminar geocerca',
+      message: `¿Eliminar la geocerca "${selected.name ?? ''}"? Esta acción no se puede deshacer.`,
+      acceptLabel: 'Eliminar',
+      rejectLabel: 'Cancelar',
+      acceptButtonProps: { severity: 'danger' },
+      rejectButtonProps: { severity: 'secondary', outlined: true },
+      accept: () => this.deleteGeofence(id),
+    });
+  }
+
+  private deleteGeofence(id: string): void {
+    this.deleting.set(true);
+    this.saveError.set(undefined);
+    this.geofenceService.delete(id).subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.startNewGeofence();
+      },
+      error: (error: unknown) => {
+        console.error('GeofenceEditorPageComponent: failed to delete geofence', error);
+        this.deleting.set(false);
+        this.saveError.set(
+          error instanceof HttpErrorResponse && error.status === 403
+            ? 'No tienes permiso para gestionar geocercas.'
+            : 'No se pudo eliminar la geocerca. Inténtalo de nuevo.',
         );
       },
     });

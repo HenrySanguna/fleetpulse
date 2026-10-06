@@ -3,7 +3,9 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
+import { ConfirmationService } from 'primeng/api';
 import { Button } from 'primeng/button';
+import { ConfirmDialog } from 'primeng/confirmdialog';
 import { InputNumber } from 'primeng/inputnumber';
 import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
@@ -78,17 +80,22 @@ function dwellSecsControlDisabled(fixture: Fixture): boolean {
 }
 
 describe('GeofenceEditorPageComponent', () => {
-  let geofenceService: { load: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+  let geofenceService: {
+    load: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
   let store: InstanceType<typeof GeofenceStore>;
   let authStore: InstanceType<typeof AuthStore>;
 
   beforeEach(() => {
-    geofenceService = { load: vi.fn(), create: vi.fn(), update: vi.fn() };
+    geofenceService = { load: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() };
     TestBed.configureTestingModule({
       providers: [{ provide: GeofenceService, useValue: geofenceService }],
     });
     TestBed.overrideComponent(GeofenceEditorPageComponent, {
-      set: { imports: [ReactiveFormsModule, Button, InputNumber, InputText, Select, FakeGeofenceDrawingEditorComponent] },
+      set: { imports: [ReactiveFormsModule, Button, ConfirmDialog, InputNumber, InputText, Select, FakeGeofenceDrawingEditorComponent] },
     });
     store = TestBed.inject(GeofenceStore);
     authStore = TestBed.inject(AuthStore);
@@ -378,6 +385,105 @@ describe('GeofenceEditorPageComponent', () => {
       const editor = fixture.debugElement.query(By.directive(FakeGeofenceDrawingEditorComponent))
         .componentInstance as FakeGeofenceDrawingEditorComponent;
       expect(editor.readOnly()).toBe(false);
+    });
+  });
+
+  describe('delete', () => {
+    const existing: GeofenceResponse = { id: 'g1', name: 'Depot', rule: 'ON_ENTER', vertices: [] };
+
+    // Auto-answers the ConfirmDialog the page raises: accept plays the user
+    // clicking "Eliminar", reject plays "Cancelar".
+    function answerConfirmation(fixture: Fixture, answer: 'accept' | 'reject'): ReturnType<typeof vi.fn> {
+      const confirmation = fixture.debugElement.injector.get(ConfirmationService);
+      const confirm = vi.fn((config: { accept?: () => void; reject?: () => void }) => config[answer]?.());
+      vi.spyOn(confirmation, 'confirm').mockImplementation(confirm as unknown as ConfirmationService['confirm']);
+      return confirm;
+    }
+
+    function deleteButton(fixture: Fixture) {
+      return fixture.debugElement.query(By.css('[data-testid="delete-geofence"]'));
+    }
+
+    it('hides the delete button for a FLEET_ADMIN while a new, unsaved geofence is being drawn', () => {
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+
+      expect(deleteButton(fixture)).toBeNull();
+    });
+
+    it('shows the delete button for a FLEET_ADMIN once a persisted geofence is selected', () => {
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+
+      click(fixture, 'select-geofence-g1');
+
+      expect(deleteButton(fixture)).not.toBeNull();
+    });
+
+    it('never shows the delete button to a DISPATCHER, even with a geofence selected', () => {
+      authStore.setDispatcher(DISPATCHER);
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+
+      click(fixture, 'select-geofence-g1');
+
+      expect(deleteButton(fixture)).toBeNull();
+    });
+
+    it('asks for confirmation, then deletes through the service, drops the geofence from the store and clears the selection', () => {
+      geofenceService.delete.mockImplementation((id: string) => {
+        store.removeGeofence(id);
+        return of(undefined);
+      });
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+      click(fixture, 'select-geofence-g1');
+      const confirm = answerConfirmation(fixture, 'accept');
+
+      clickButton(fixture, 'delete-geofence');
+
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(geofenceService.delete).toHaveBeenCalledWith('g1');
+      expect(store.geofences()).toEqual([]);
+      expect(store.selected()).toBeUndefined();
+      expect(deleteButton(fixture)).toBeNull();
+    });
+
+    it('does not delete anything when the confirmation is rejected', () => {
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+      click(fixture, 'select-geofence-g1');
+      answerConfirmation(fixture, 'reject');
+
+      clickButton(fixture, 'delete-geofence');
+
+      expect(geofenceService.delete).not.toHaveBeenCalled();
+      expect(store.geofences()).toEqual([existing]);
+    });
+
+    it('shows an error and keeps the geofence selected when the delete fails', () => {
+      geofenceService.delete.mockReturnValue(throwError(() => new Error('boom')));
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+      click(fixture, 'select-geofence-g1');
+      answerConfirmation(fixture, 'accept');
+
+      clickButton(fixture, 'delete-geofence');
+
+      expect(fixture.nativeElement.textContent).toContain('No se pudo eliminar la geocerca');
+      expect(store.selected()).toEqual(existing);
+    });
+
+    it('maps a 403 on delete to the permission message', () => {
+      geofenceService.delete.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+      store.setGeofences([existing]);
+      const fixture = createFixture();
+      click(fixture, 'select-geofence-g1');
+      answerConfirmation(fixture, 'accept');
+
+      clickButton(fixture, 'delete-geofence');
+
+      expect(fixture.nativeElement.textContent).toContain('No tienes permiso para gestionar geocercas.');
     });
   });
 });

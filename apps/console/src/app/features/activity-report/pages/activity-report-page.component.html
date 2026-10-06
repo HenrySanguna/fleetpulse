@@ -16,15 +16,25 @@
       }
     </select>
 
-    <div class="select date-display">
-      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-        <rect x="3" y="4" width="14" height="13" rx="2" />
-        <path d="M3 8h14M7 2v4M13 2v4" />
-      </svg>
-      {{ dateRangeLabel }}
-    </div>
+    <p-datepicker
+      [formControl]="rangeControl"
+      selectionMode="range"
+      dateFormat="dd/mm/yy"
+      placeholder="Selecciona un rango"
+      ariaLabel="Rango de fechas"
+      data-testid="activity-date-range"
+      [maxDate]="maxDate"
+      [readonlyInput]="true"
+      [showIcon]="true"
+    />
 
-    <button type="button" class="btn btn-primary" data-testid="activity-generate-report" (click)="generateReport()">
+    <button
+      type="button"
+      class="btn btn-primary"
+      data-testid="activity-generate-report"
+      [disabled]="!hasRange()"
+      (click)="generateReport()"
+    >
       Generar informe
     </button>
 

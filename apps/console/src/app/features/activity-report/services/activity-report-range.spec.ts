@@ -1,4 +1,4 @@
-import { defaultActivityReportRange } from './activity-report-range';
+import { defaultActivityReportRange, toActivityReportRange } from './activity-report-range';
 
 describe('defaultActivityReportRange', () => {
   it('spans exactly the last 7 calendar days (today plus the 6 days before it)', () => {
@@ -18,5 +18,51 @@ describe('defaultActivityReportRange', () => {
     const range = defaultActivityReportRange();
 
     expect(range.from.getTime()).toBeLessThan(range.to.getTime());
+  });
+});
+
+// The backend maps `from`/`to` to UTC calendar days, so the picked calendar
+// days must become UTC day bounds whatever the browser's timezone is.
+describe('toActivityReportRange', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('spans from the UTC start of the first day to the UTC end of the last day for a past range', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 8, 17, 12, 0, 0)));
+
+    const range = toActivityReportRange(new Date(2026, 8, 1, 15, 30), new Date(2026, 8, 5, 3, 0));
+
+    expect(range.from).toEqual(new Date(Date.UTC(2026, 8, 1, 0, 0, 0, 0)));
+    expect(range.to).toEqual(new Date(Date.UTC(2026, 8, 5, 23, 59, 59, 999)));
+  });
+
+  it('clamps the end to now when the last day is today', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 17, 12, 0, 0));
+
+    const range = toActivityReportRange(new Date(2026, 8, 11), new Date(2026, 8, 17));
+
+    expect(range.to).toEqual(new Date(2026, 8, 17, 12, 0, 0));
+  });
+
+  it('treats a single picked day as a one-day range', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 8, 17, 12, 0, 0)));
+
+    const range = toActivityReportRange(new Date(2026, 8, 3), null);
+
+    expect(range.from).toEqual(new Date(Date.UTC(2026, 8, 3, 0, 0, 0, 0)));
+    expect(range.to).toEqual(new Date(Date.UTC(2026, 8, 3, 23, 59, 59, 999)));
+  });
+
+  it('never returns a from after the clamped to when the local day is already ahead of UTC', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 8, 17, 23, 0, 0)));
+
+    const range = toActivityReportRange(new Date(2026, 8, 18), null);
+
+    expect(range.from.getTime()).toBeLessThanOrEqual(range.to.getTime());
   });
 });

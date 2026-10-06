@@ -42,11 +42,6 @@ select.select {
   cursor: pointer;
 }
 
-.date-display {
-  color: var(--fp-text-muted);
-  cursor: default;
-}
-
 .btn-primary {
   background: #2563eb;
   border-color: #2563eb;

@@ -72,4 +72,26 @@ describe('GeofenceStore', () => {
     store.select(undefined);
     expect(store.selected()).toBeUndefined();
   });
+
+  describe('removeGeofence', () => {
+    it('drops the geofence from the list and leaves the selection alone when another one was selected', () => {
+      store.setGeofences([{ id: 'g1', name: 'Depot' }, { id: 'g2', name: 'Port' }]);
+      store.select('g2');
+
+      store.removeGeofence('g1');
+
+      expect(store.geofences()).toEqual([{ id: 'g2', name: 'Port' }]);
+      expect(store.selectedId()).toBe('g2');
+    });
+
+    it('clears the selection when the removed geofence was the selected one', () => {
+      store.setGeofences([{ id: 'g1', name: 'Depot' }]);
+      store.select('g1');
+
+      store.removeGeofence('g1');
+
+      expect(store.geofences()).toEqual([]);
+      expect(store.selectedId()).toBeUndefined();
+    });
+  });
 });

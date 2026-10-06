@@ -6,12 +6,16 @@ import {
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withFetch, withInterceptors, withNoXsrfProtection } from '@angular/common/http';
 import { provideApi } from '@fleetpulse/api-client';
+import type { Translation } from 'primeng/api';
 import { providePrimeNG } from 'primeng/config';
 import { definePreset } from '@primeuix/themes';
 import AuraBase from '@primeuix/themes/aura/base';
 import AuraButton from '@primeuix/themes/aura/button';
 import AuraCard from '@primeuix/themes/aura/card';
 import AuraCheckbox from '@primeuix/themes/aura/checkbox';
+import AuraConfirmDialog from '@primeuix/themes/aura/confirmdialog';
+import AuraDialog from '@primeuix/themes/aura/dialog';
+import AuraDatePicker from '@primeuix/themes/aura/datepicker';
 import AuraDrawer from '@primeuix/themes/aura/drawer';
 import AuraInputNumber from '@primeuix/themes/aura/inputnumber';
 import AuraInputText from '@primeuix/themes/aura/inputtext';
@@ -26,7 +30,8 @@ import { environment } from '../environments/environment';
 // hand-assembles the same `{ ...base, components: {...} }` shape the barrel
 // builds (see node_modules/@primeuix/themes/dist/aura/index.mjs), but only
 // for the components this app and `libs/console-ui` actually use: Button,
-// Card, Checkbox, Drawer, InputNumber, InputText, Select, Tag. (The
+// Card, Checkbox, ConfirmDialog (and the Dialog it renders), DatePicker,
+// Drawer, InputNumber, InputText, Select, Tag. (The
 // barrel's own `css` field is Aura's empty placeholder -- a bare newline --
 // so it is intentionally left out here.)
 // If you add a new PrimeNG component anywhere in the console app or
@@ -38,6 +43,9 @@ const AuraSubset = {
     button: AuraButton,
     card: AuraCard,
     checkbox: AuraCheckbox,
+    confirmdialog: AuraConfirmDialog,
+    datepicker: AuraDatePicker,
+    dialog: AuraDialog,
     drawer: AuraDrawer,
     inputnumber: AuraInputNumber,
     inputtext: AuraInputText,
@@ -72,6 +80,21 @@ const FleetPulsePreset = definePreset(AuraSubset, {
   },
 });
 
+const SPANISH_TRANSLATION: Translation = {
+  firstDayOfWeek: 1,
+  dayNames: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
+  dayNamesShort: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
+  dayNamesMin: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
+  monthNames: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+  monthNamesShort: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+  today: 'Hoy',
+  clear: 'Limpiar',
+  weekHeader: 'Sem',
+  dateFormat: 'dd/mm/yy',
+  accept: 'Sí',
+  reject: 'No',
+};
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZonelessChangeDetection(),
@@ -100,6 +123,6 @@ export const appConfig: ApplicationConfig = {
     // Task 5.1: `libs/console-ui`'s components are built on PrimeNG. The
     // `dark mode via CSS class` selector is left at its default (`.p-dark`)
     // -- no dark-mode toggle exists yet, out of scope for this change.
-    providePrimeNG({ theme: { preset: FleetPulsePreset } }),
+    providePrimeNG({ theme: { preset: FleetPulsePreset }, translation: SPANISH_TRANSLATION }),
   ],
 };
