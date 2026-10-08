@@ -1,0 +1,29 @@
+# demo-hardening
+
+Mirror: Engram `odd/demo-hardening/tasks` (plan source: `odd/demo-hardening/plan`, #178).
+
+## Objective
+Harden FleetPulse so a shared public `DISPATCHER` demo account can be published in the README without allowing cheap DoS on the API, Mosquitto or Neon. The `FLEET_ADMIN` account stays private.
+
+## Constraints
+- Rate limiting lives in Spring (Bucket4j + Caffeine); prod Caddy is stock `caddy:2-alpine`.
+- Branch `feat/demo-hardening`; one work-unit commit per task; no push.
+- Contract changes regenerate `libs/api-client` in the same change.
+- Prod Caddy/Mosquitto config is not validated by CI: validate locally.
+
+## Tasks
+- [x] T1 RateLimitFilter + `FleetpulseRateLimitProperties` (login 5/min/IP, mqtt credentials 6/min/IP, `/api/**` 120/min/IP, `/actuator/**` exempt, 429 + Retry-After) + tests
+- [ ] T2 Session timeout 20m + per-user session cap (default 25, evict oldest) + tests
+- [ ] T3 MQTT browser credential cap per user (default 50, reject 429 before touching broker) + tests
+- [ ] T4 Endpoint limits: `/track` window/row cap, `/activity-report` range, `/api/alerts` limit; regenerate api-client; tests
+- [ ] T5 Infra: Caddyfile timeouts/body limits, `mosquitto.prod.conf` limits on 9001, Tomcat/Hikari/statement timeout
+- [ ] T6 Demo dispatcher seed SQL + README live demo section and security/limitations updates
+
+## Route declaration
+Delegated direct, one writer at a time, grouped: A = T1-T3, B = T4, C = T5-T6 (each touches 2+ non-trivial files and needs reading to prepare the write).
+
+## Progress / evidence
+(none yet)
+
+## Next step
+Launch writer A.

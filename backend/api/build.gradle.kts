@@ -34,6 +34,10 @@ dependencies {
     // not managed by Spring Boot's dependency-management BOM either -- pinned
     // explicitly.
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
+    // Per-client-IP request throttling (demo-hardening): token buckets held in a
+    // bounded, expiring Caffeine cache. Both are pinned explicitly.
+    implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
