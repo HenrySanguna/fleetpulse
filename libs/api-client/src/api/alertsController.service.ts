@@ -100,14 +100,15 @@ export class AlertsControllerService extends BaseService implements AlertsContro
      * @param acknowledged 
      * @param from 
      * @param to 
+     * @param limit 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<Array<AlertResponse>>;
-    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<AlertResponse>>>;
-    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<AlertResponse>>>;
-    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, limit?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<Array<AlertResponse>>;
+    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, limit?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<AlertResponse>>>;
+    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, limit?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<AlertResponse>>>;
+    public list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, limit?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: '*/*', context?: HttpContext, transferCache?: boolean}): Observable<any> {
 
         let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
 
@@ -151,6 +152,15 @@ export class AlertsControllerService extends BaseService implements AlertsContro
             localVarQueryParameters,
             'to',
             <any>to,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'limit',
+            <any>limit,
             QueryParamStyle.Form,
             true,
         );

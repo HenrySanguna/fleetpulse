@@ -34,6 +34,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Instant.now()-based timestamps land without any extra partition setup.
 @Testcontainers
 @AutoConfigureTestRestTemplate
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = "fleetpulse.map.track.max-rows=3")
 class VehicleTrackEndpointTest {
 
     private static final Path POSTGIS_PARTMAN_DOCKERFILE = Path
@@ -108,7 +109,7 @@ class VehicleTrackEndpointTest {
             DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "track-a@acme.test", "s3cret-pass"));
 
         ResponseEntity<TrackPointResponse[]> response = restTemplate.exchange(
-            baseUrl() + "/api/vehicles/" + vehicleId + "/track",
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track?from=" + t0.minusSeconds(60) + "&to=" + t0.plusSeconds(60),
             HttpMethod.GET, new HttpEntity<>(session), TrackPointResponse[].class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -136,7 +137,7 @@ class VehicleTrackEndpointTest {
             DispatcherLoginTestSupport.login(restTemplate, baseUrl(), "track-e@acme.test", "s3cret-pass"));
 
         ResponseEntity<TrackPointResponse[]> response = restTemplate.exchange(
-            baseUrl() + "/api/vehicles/" + vehicleId + "/track",
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track?from=" + t0.minusSeconds(60) + "&to=" + t0.plusSeconds(60),
             HttpMethod.GET, new HttpEntity<>(session), TrackPointResponse[].class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -199,6 +200,75 @@ class VehicleTrackEndpointTest {
             HttpMethod.GET, new HttpEntity<>(session), String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void defaultsToTheLastTwoHoursWhenFromAndToAreOmitted() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-track-default-window"));
+        users.save(new User(org, "track-f@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Track-6");
+        Instant recent = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.MILLIS);
+        seedPosition(vehicleId, Instant.now().minus(3, ChronoUnit.HOURS), 1.0, 1.0);
+        seedPosition(vehicleId, recent, 2.0, 2.0);
+
+        ResponseEntity<TrackPointResponse[]> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track",
+            HttpMethod.GET, new HttpEntity<>(session("track-f@acme.test")), TrackPointResponse[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsExactly(new TrackPointResponse(2.0, 2.0, recent));
+    }
+
+    @Test
+    void rejectsAWindowLongerThanTwentyFourHoursWithBadRequest() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-track-long-window"));
+        users.save(new User(org, "track-g@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Track-7");
+        Instant to = Instant.now();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track?from=" + to.minus(25, ChronoUnit.HOURS) + "&to=" + to,
+            HttpMethod.GET, new HttpEntity<>(session("track-g@acme.test")), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void rejectsFromNotBeforeToWithBadRequest() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-track-inverted"));
+        users.save(new User(org, "track-h@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Track-8");
+        Instant at = Instant.now();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track?from=" + at + "&to=" + at,
+            HttpMethod.GET, new HttpEntity<>(session("track-h@acme.test")), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void keepsTheMostRecentRowsInAscendingOrderWhenTheRowCapIsReached() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-track-row-cap"));
+        users.save(new User(org, "track-i@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Track-9");
+        Instant base = Instant.now().minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MILLIS);
+        for (int i = 0; i < 5; i++) {
+            seedPosition(vehicleId, base.plusSeconds(i * 10L), i % 2 == 0 ? 0.0 : 0.01, i * 0.01);
+        }
+
+        ResponseEntity<TrackPointResponse[]> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/track",
+            HttpMethod.GET, new HttpEntity<>(session("track-i@acme.test")), TrackPointResponse[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).extracting(TrackPointResponse::recordedAt)
+            .containsExactly(base.plusSeconds(20), base.plusSeconds(30), base.plusSeconds(40));
+    }
+
+    private HttpHeaders session(String email) {
+        return DispatcherLoginTestSupport.sessionHeadersFrom(
+            DispatcherLoginTestSupport.login(restTemplate, baseUrl(), email, "s3cret-pass"));
     }
 
     private String baseUrl() {

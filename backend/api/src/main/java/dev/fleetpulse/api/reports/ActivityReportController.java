@@ -1,5 +1,6 @@
 package dev.fleetpulse.api.reports;
 
+import dev.fleetpulse.api.config.FleetpulseActivityReportProperties;
 import dev.fleetpulse.api.security.AuthenticatedDispatcher;
 import dev.fleetpulse.api.security.CurrentDispatcher;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
@@ -34,10 +36,15 @@ public class ActivityReportController {
 
     private final CurrentDispatcher currentDispatcher;
     private final ActivityReportService activityReportService;
+    private final FleetpulseActivityReportProperties properties;
 
-    public ActivityReportController(CurrentDispatcher currentDispatcher, ActivityReportService activityReportService) {
+    public ActivityReportController(
+            CurrentDispatcher currentDispatcher,
+            ActivityReportService activityReportService,
+            FleetpulseActivityReportProperties properties) {
         this.currentDispatcher = currentDispatcher;
         this.activityReportService = activityReportService;
+        this.properties = properties;
     }
 
     @GetMapping
@@ -46,7 +53,15 @@ public class ActivityReportController {
             @RequestParam String from,
             @RequestParam String to) {
         AuthenticatedDispatcher dispatcher = currentDispatcher.require();
-        return activityReportService.report(vehicleId, dispatcher.organizationId(), parseInstant(from), parseInstant(to));
+        Instant fromInstant = parseInstant(from);
+        Instant toInstant = parseInstant(to);
+        if (!fromInstant.isBefore(toInstant)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be before to");
+        }
+        if (Duration.between(fromInstant, toInstant).compareTo(Duration.ofDays(properties.maxRangeDays())) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Range exceeds " + properties.maxRangeDays() + " days");
+        }
+        return activityReportService.report(vehicleId, dispatcher.organizationId(), fromInstant, toInstant);
     }
 
     private static Instant parseInstant(String value) {

@@ -151,6 +151,65 @@ class AlertsEndpointTest {
     }
 
     @Test
+    void appliesTheLimitParameterKeepingTheNewestAlerts() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-limit"));
+        users.save(new User(org, "alerts-limit@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Limit");
+        Instant now = Instant.now();
+        seedAlert(UUID.randomUUID(), org.getId(), vehicleId, "speeding", null, now.minus(3, ChronoUnit.MINUTES));
+        seedAlert(UUID.randomUUID(), org.getId(), vehicleId, "excessive_idle", null, now.minus(2, ChronoUnit.MINUTES));
+        seedAlert(UUID.randomUUID(), org.getId(), vehicleId, "geofence_enter", null, now.minus(1, ChronoUnit.MINUTES));
+
+        ResponseEntity<AlertResponse[]> response = restTemplate.exchange(
+            baseUrl() + "/api/alerts?limit=2", HttpMethod.GET,
+            new HttpEntity<>(sessionHeaders("alerts-limit@acme.test")), AlertResponse[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).extracting(AlertResponse::alertType).containsExactly("geofence_enter", "excessive_idle");
+    }
+
+    @Test
+    void capsTheListAtTwoHundredAlertsByDefault() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-default-limit"));
+        users.save(new User(org, "alerts-default@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Alerts-Default");
+        seedManyAlerts(org.getId(), vehicleId, 210);
+
+        ResponseEntity<AlertResponse[]> response = restTemplate.exchange(
+            baseUrl() + "/api/alerts", HttpMethod.GET,
+            new HttpEntity<>(sessionHeaders("alerts-default@acme.test")), AlertResponse[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).hasSize(200);
+    }
+
+    @Test
+    void rejectsALimitOutsideOneToFiveHundredWithBadRequest() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-bad-limit"));
+        users.save(new User(org, "alerts-bad-limit@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+
+        for (String limit : new String[] {"0", "-1", "501"}) {
+            ResponseEntity<String> response = restTemplate.exchange(
+                baseUrl() + "/api/alerts?limit=" + limit, HttpMethod.GET,
+                new HttpEntity<>(sessionHeaders("alerts-bad-limit@acme.test")), String.class);
+            assertThat(response.getStatusCode()).as("limit=" + limit).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Test
+    void rejectsMoreThanTenTypeFiltersWithBadRequest() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-alerts-many-types"));
+        users.save(new User(org, "alerts-types@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+            baseUrl() + "/api/alerts?type=speeding&type=speeding&type=speeding&type=speeding&type=speeding&type=speeding"
+                + "&type=speeding&type=speeding&type=speeding&type=speeding&type=speeding",
+            HttpMethod.GET, new HttpEntity<>(sessionHeaders("alerts-types@acme.test")), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void marksAnAlertAsAcknowledgedIdempotentlyRecordingWhoAndWhen() throws SQLException {
         Organization org = organizations.save(new Organization("acme-alerts-ack"));
         users.save(new User(org, "alerts-ack@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
@@ -313,7 +372,22 @@ class AlertsEndpointTest {
         }
     }
 
-    private static void acknowledgeDirectly(UUID id) throws SQLException {
+    private static void seedManyAlerts(UUID organizationId, UUID vehicleId, int count) throws SQLException {
+        try (
+            Connection connection = connect();
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO alerts (id, organization_id, vehicle_id, alert_type, context, occurred_at, created_at) "
+                    + "SELECT gen_random_uuid(), ?, ?, 'speeding', NULL, now() - (g || ' seconds')::interval, now() "
+                    + "FROM generate_series(1, ?) g")
+        ) {
+            statement.setObject(1, organizationId);
+            statement.setObject(2, vehicleId);
+            statement.setInt(3, count);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void acknowledgeDirectly(UUID id)throws SQLException {
         try (
             Connection connection = connect();
             PreparedStatement statement = connection.prepareStatement("UPDATE alerts SET acknowledged = true WHERE id = ?")
