@@ -69,6 +69,7 @@ public class SecurityConfig {
             HttpSecurity http,
             DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter,
             RateLimitFilter rateLimitFilter,
+            SessionCapEnforcer sessionCapEnforcer,
             CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -91,7 +92,10 @@ public class SecurityConfig {
                 .anyRequest().authenticated())
             .formLogin(form -> form
                 .loginProcessingUrl("/login")
-                .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
+                .successHandler((request, response, authentication) -> {
+                    sessionCapEnforcer.enforce(authentication.getName(), request.getSession().getId());
+                    response.setStatus(HttpServletResponse.SC_OK);
+                })
                 .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
                 .permitAll())
             // F8: same JSON-API reasoning as formLogin above, missed when

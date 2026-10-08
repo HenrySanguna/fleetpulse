@@ -40,6 +40,7 @@ spring:
 server:
   servlet:
     session:
+      timeout: 20m
       cookie:
         # 02-add-fleet-auth, task 2.2: design.md originally required
         # HttpOnly/Secure/SameSite=Strict. Deviation, documented per this
