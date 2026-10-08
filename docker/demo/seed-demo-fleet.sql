@@ -13,7 +13,8 @@
 -- ON CONFLICT DO NOTHING on the fixed UUIDs below so reruns (redeploys,
 -- restarts) never fail or duplicate rows. The organization row itself is
 -- NOT created here -- it already exists in prod (it owns the real
--- dispatcher@fleetpulse.test account) -- only vehicles/devices are seeded.
+-- dispatcher@fleetpulse.test account) -- only vehicles/devices and the public
+-- demo DISPATCHER user are seeded.
 --
 -- These 10 vehicle UUIDs must match SIMULATOR_VEHICLE_IDS in
 -- docker-compose.prod.yml's `simulator` service exactly, in the same order,
@@ -50,3 +51,13 @@ INSERT INTO devices (id, vehicle_id, identifier, created_at) VALUES
     ('a25a95f2-164d-4820-8f12-2690e979ca87', '4cbe7816-18c3-44b2-ba74-c20078bbab11', 'demo-device-09', now()),
     ('f44ddb08-fcd7-41bf-9136-82b7808a63d0', '62a73e93-72f7-4e47-b10f-6a658ae88a16', 'demo-device-10', now())
 ON CONFLICT (identifier) DO NOTHING;
+
+-- Public demo account advertised in README.md. The password
+-- (FleetPulse-Demo-2026) is intentionally public, so its Argon2id hash
+-- (Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8, same as SecurityConfig)
+-- lives in the repo. DISPATCHER only; the FLEET_ADMIN account is never seeded.
+INSERT INTO users (id, organization_id, email, password_hash, role, active, created_at) VALUES
+    ('5d0c8a4e-7b1f-4c3a-9e62-1f4a8b7d2c90', 'e7de66a7-f8a2-4992-9a57-8d909634609f', 'demo@fleetpulse.dev',
+     '$argon2id$v=19$m=16384,t=2,p=1$3IrTZMfslYTuUhM4FAdtiQ$e45yInItKxMbhw0pqvPie8ExjpMumhCqkJOuI/1vP3k',
+     'DISPATCHER', true, now())
+ON CONFLICT (email) DO NOTHING;

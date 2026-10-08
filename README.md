@@ -17,6 +17,7 @@ The console UI is in Spanish.
 
 ## Table of contents
 
+- [Live demo](#live-demo)
 - [Features](#features)
 - [Architecture](#architecture)
 - [How the data flows](#how-the-data-flows)
@@ -33,6 +34,22 @@ The console UI is in Spanish.
 - [Engineering decisions](#engineering-decisions)
 - [Known limitations and roadmap](#known-limitations-and-roadmap)
 - [How it was built](#how-it-was-built)
+
+---
+
+## Live demo
+
+- **Console:** https://fleetpulse-console.pages.dev
+- **Account:** `demo@fleetpulse.dev` / `FleetPulse-Demo-2026`
+- **Role:** `DISPATCHER`, so it is read-mostly: you can watch the map, alerts, ETAs, trips and reports, but there is no administration.
+
+Things worth knowing before you try it:
+
+- The environment is shared. Everyone who uses the demo account sees the same organization and the same fleet.
+- The fleet is simulated: 10 vehicles circulating in Madrid. The simulator runs for a limited window after each deploy (one hour by default), so the map can be empty when you arrive.
+- The backend runs on free tiers and scales to zero, so the first request after a quiet period can take a few seconds.
+- Rate limits apply per IP and per user (see [Security model](#security-model)).
+- The UI is in Spanish.
 
 ---
 
@@ -191,6 +208,11 @@ Straight-line distance multiplied by a sinuosity factor, divided by the recent a
   - Each browser session gets short-lived credentials (5 minutes in production) that are subscribe-only on its organization's topics.
   - Revoking a device force-disconnects its session.
   - Dedicated tests prove that organizations and devices cannot read or write each other's topics.
+- **Abuse protection for the public demo:**
+  - Per-IP rate limiting in the API (Bucket4j): login, `/api/**` and MQTT credential issuance each have their own limit; exceeding it returns `429` with `Retry-After`. Actuator endpoints are exempt. Buckets are in memory, so they are not shared across instances.
+  - Per-user caps: concurrent sessions (the oldest is evicted, sessions expire after 20 minutes of inactivity) and active browser MQTT credentials.
+  - Bounded queries: the track endpoint has a default and a maximum time window plus a row cap, the activity report has a maximum date range, and the alerts endpoint has a limit.
+  - Proxy, broker and server limits: Caddy header/body size and connection timeouts, a connection cap, packet size and queue limits on the broker's WebSocket listener, and Tomcat and connection-pool timeouts.
 
 ---
 
@@ -315,7 +337,7 @@ Notes:
 
 - The Nx dev server cannot render the map because of a MapLibre worker chunk issue. For anything that needs the map, use the production build (`npx nx build console --configuration=production`), which is also what the Playwright suite serves.
 - A demo fleet can be seeded with `docker/demo/seed-demo-fleet.sql`, and the device simulator is started with `./gradlew :processor:runDeviceSimulator` (configured with `SIMULATOR_*` environment variables).
-- There is no user-provisioning endpoint yet, so dispatcher accounts are inserted with SQL (the password column expects an Argon2 hash).
+- The public demo `DISPATCHER` user (`demo@fleetpulse.dev`) is created by `docker/demo/seed-demo-fleet.sql`. There is no user-provisioning endpoint yet, so any other account is inserted with SQL (the password column expects an Argon2 hash).
 
 Common commands:
 
@@ -354,6 +376,7 @@ npm run generate:api-client:check      # fail if the client drifted
 - Days are UTC; there is no per-organization time zone.
 - The UI is Spanish only, with no i18n layer and no dark mode.
 - Mobile layout is functional but not polished.
+- Rate limiting is per instance (in-memory buckets); running several API instances would need a shared store.
 
 ---
 
