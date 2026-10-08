@@ -12,6 +12,8 @@ public interface MqttCredentialRepository extends JpaRepository<MqttCredential, 
 
     Optional<MqttCredential> findByUsername(String username);
 
+    long countByUserAndExpiresAtAfter(User user, Instant instant);
+
     // Task 3.3: only dispatcher-session credentials have a non-null
     // expiresAt (MqttCredential.forDevice leaves it null); SQL's NULL
     // comparison semantics exclude those rows automatically, no extra
