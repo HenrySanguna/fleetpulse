@@ -15,5 +15,5 @@ import java.util.UUID;
 // AlertTypeFilter, which groups geofence_enter/geofence_exit/geofence_dwell
 // under one UI category) can request all three geofence types in a single
 // request instead of three round trips.
-record AlertFilter(List<AlertType> types, UUID vehicleId, Boolean acknowledged, Instant from, Instant to) {
+record AlertFilter(List<AlertType> types, UUID vehicleId, Boolean acknowledged, Instant from, Instant to, int limit) {
 }

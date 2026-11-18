@@ -18,10 +18,10 @@ import java.util.UUID;
 // input type Geo.simplifyTrack (VehicleTrackService) needs, no intermediate
 // DTO required for an internal read projection.
 //
-// from/to bound the query with COALESCE against Postgres' -infinity/infinity
-// timestamptz literals instead of the "(? IS NULL OR col >= ?)" pattern used
-// elsewhere for optional filters, since each bound only needs a single bind
-// parameter this way.
+// The window is always bounded by the caller (VehicleTrackService), and at
+// most maxRows of the most recent rows are read: the query orders newest
+// first so LIMIT keeps the tail of the window, then the result is reversed
+// back to ascending order for Geo.simplifyTrack.
 @Component
 class PositionJdbcReader {
 
@@ -29,9 +29,10 @@ class PositionJdbcReader {
         SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon, recorded_at
         FROM positions
         WHERE vehicle_id = ?
-          AND recorded_at >= COALESCE(?, '-infinity'::timestamptz)
-          AND recorded_at <= COALESCE(?, 'infinity'::timestamptz)
-        ORDER BY recorded_at ASC
+          AND recorded_at >= ?
+          AND recorded_at <= ?
+        ORDER BY recorded_at DESC
+        LIMIT ?
         """;
 
     private final ObjectProvider<JdbcTemplate> jdbcTemplate;
@@ -40,17 +41,17 @@ class PositionJdbcReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    List<GeoPoint> findTrack(UUID vehicleId, Instant from, Instant to) {
-        Timestamp fromTs = from == null ? null : Timestamp.from(from);
-        Timestamp toTs = to == null ? null : Timestamp.from(to);
-        return jdbcTemplate.getObject().query(
+    List<GeoPoint> findTrack(UUID vehicleId, Instant from, Instant to, int maxRows) {
+        List<GeoPoint> newestFirst = jdbcTemplate.getObject().query(
             SELECT_TRACK_SQL,
             ps -> {
                 ps.setObject(1, vehicleId);
-                ps.setTimestamp(2, fromTs);
-                ps.setTimestamp(3, toTs);
+                ps.setTimestamp(2, Timestamp.from(from));
+                ps.setTimestamp(3, Timestamp.from(to));
+                ps.setInt(4, maxRows);
             },
             (rs, rowNum) -> new GeoPoint(rs.getDouble("lat"), rs.getDouble("lon"), rs.getTimestamp("recorded_at").toInstant())
         );
+        return newestFirst.reversed();
     }
 }

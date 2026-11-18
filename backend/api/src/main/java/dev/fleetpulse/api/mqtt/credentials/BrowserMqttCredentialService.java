@@ -61,6 +61,13 @@ public class BrowserMqttCredentialService {
         User user = users.getObject().findById(dispatcher.userId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
 
+        // Rejected rather than evicting the oldest, which would cut a live map
+        // off its feed. Checked before any broker call so a flood costs only
+        // one count query.
+        if (mqttCredentials.getObject().countByUserAndExpiresAtAfter(user, Instant.now()) >= browserProperties.maxActivePerUser()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
+        }
+
         String username = "browser-" + UUID.randomUUID();
         String rawPassword = generatePassword();
         Instant expiresAt = Instant.now().plus(browserProperties.credentialTtl());

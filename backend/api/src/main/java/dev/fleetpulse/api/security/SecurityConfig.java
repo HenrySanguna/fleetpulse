@@ -12,6 +12,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
@@ -67,6 +68,8 @@ public class SecurityConfig {
     public SecurityFilterChain dispatcherSecurityFilterChain(
             HttpSecurity http,
             DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter,
+            RateLimitFilter rateLimitFilter,
+            SessionCapEnforcer sessionCapEnforcer,
             CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -89,7 +92,10 @@ public class SecurityConfig {
                 .anyRequest().authenticated())
             .formLogin(form -> form
                 .loginProcessingUrl("/login")
-                .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
+                .successHandler((request, response, authentication) -> {
+                    sessionCapEnforcer.enforce(authentication.getName(), request.getSession().getId());
+                    response.setStatus(HttpServletResponse.SC_OK);
+                })
                 .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
                 .permitAll())
             // F8: same JSON-API reasoning as formLogin above, missed when
@@ -178,7 +184,10 @@ public class SecurityConfig {
             // before AuthorizationFilter (which decides access), so a
             // deactivated dispatcher is already anonymous by the time
             // authorization runs.
-            .addFilterAfter(deactivatedDispatcherSessionFilter, SecurityContextHolderFilter.class);
+            .addFilterAfter(deactivatedDispatcherSessionFilter, SecurityContextHolderFilter.class)
+            // Throttle before credentials are evaluated, so a login brute
+            // force is cut off ahead of the Argon2 hash.
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
@@ -195,6 +204,14 @@ public class SecurityConfig {
             DeactivatedDispatcherSessionFilter deactivatedDispatcherSessionFilter) {
         FilterRegistrationBean<DeactivatedDispatcherSessionFilter> registration =
             new FilterRegistrationBean<>(deactivatedDispatcherSessionFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> disableAutoRegistrationOfRateLimit(
+            RateLimitFilter rateLimitFilter) {
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(rateLimitFilter);
         registration.setEnabled(false);
         return registration;
     }

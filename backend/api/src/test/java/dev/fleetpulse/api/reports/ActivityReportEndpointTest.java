@@ -338,6 +338,38 @@ class ActivityReportEndpointTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    @Test
+    void rejectsAFromThatIsNotBeforeToAndARangeLongerThanThirtyOneDaysWithBadRequest() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-activity-report-bad-range"));
+        users.save(new User(org, "activity-bad-range@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Bad-Range");
+        String prefix = baseUrl() + "/api/vehicles/" + vehicleId + "/activity-report?";
+        String[] queries = {
+            "from=2026-09-10T00:00:00Z&to=2026-09-10T00:00:00Z",
+            "from=2026-09-11T00:00:00Z&to=2026-09-10T00:00:00Z",
+            "from=2026-08-01T00:00:00Z&to=2026-09-02T00:00:01Z",
+        };
+
+        for (String query : queries) {
+            ResponseEntity<String> response = restTemplate.exchange(
+                prefix + query, HttpMethod.GET, new HttpEntity<>(sessionHeaders("activity-bad-range@acme.test")), String.class);
+            assertThat(response.getStatusCode()).as(query).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Test
+    void acceptsARangeOfExactlyThirtyOneDays() throws SQLException {
+        Organization org = organizations.save(new Organization("acme-activity-report-max-range"));
+        users.save(new User(org, "activity-max-range@acme.test", passwordEncoder.encode("s3cret-pass"), UserRole.DISPATCHER));
+        UUID vehicleId = seedVehicle(org.getId(), "Truck-Activity-Max-Range");
+
+        ResponseEntity<String> response = restTemplate.exchange(
+            baseUrl() + "/api/vehicles/" + vehicleId + "/activity-report?from=2026-08-01T00:00:00Z&to=2026-09-01T00:00:00Z",
+            HttpMethod.GET, new HttpEntity<>(sessionHeaders("activity-max-range@acme.test")), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
     private org.springframework.http.HttpHeaders sessionHeaders(String email) {
         return DispatcherLoginTestSupport.sessionHeadersFrom(
             DispatcherLoginTestSupport.login(restTemplate, baseUrl(), email, "s3cret-pass"));

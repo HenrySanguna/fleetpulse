@@ -39,7 +39,8 @@ export interface AlertsControllerServiceInterface {
      * @param acknowledged 
      * @param from 
      * @param to 
+     * @param limit 
      */
-    list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, extraHttpRequestParams?: any): Observable<Array<AlertResponse>>;
+    list1(type?: Array<string>, vehicleId?: string, acknowledged?: boolean, from?: string, to?: string, limit?: number, extraHttpRequestParams?: any): Observable<Array<AlertResponse>>;
 
 }

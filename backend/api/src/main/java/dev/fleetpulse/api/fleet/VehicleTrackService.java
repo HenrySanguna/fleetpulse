@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -29,20 +31,32 @@ public class VehicleTrackService {
     private final ObjectProvider<VehicleRepository> vehicles;
     private final PositionJdbcReader positionReader;
     private final FleetpulseTrackProperties trackProperties;
+    private final Clock clock;
 
     VehicleTrackService(
             ObjectProvider<VehicleRepository> vehicles,
             PositionJdbcReader positionReader,
-            FleetpulseTrackProperties trackProperties) {
+            FleetpulseTrackProperties trackProperties,
+            Clock clock) {
         this.vehicles = vehicles;
         this.positionReader = positionReader;
         this.trackProperties = trackProperties;
+        this.clock = clock;
     }
 
     public List<TrackPointResponse> track(UUID vehicleId, UUID organizationId, Instant from, Instant to) {
         Vehicle vehicle = vehicleInOwnOrgOrThrow(vehicleId, organizationId);
 
-        List<GeoPoint> track = positionReader.findTrack(vehicle.getId(), from, to);
+        Instant effectiveTo = to != null ? to : Instant.now(clock);
+        Instant effectiveFrom = from != null ? from : effectiveTo.minus(trackProperties.defaultWindow());
+        if (!effectiveFrom.isBefore(effectiveTo)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be before to");
+        }
+        if (Duration.between(effectiveFrom, effectiveTo).compareTo(trackProperties.maxWindow()) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Window exceeds " + trackProperties.maxWindow());
+        }
+
+        List<GeoPoint> track = positionReader.findTrack(vehicle.getId(), effectiveFrom, effectiveTo, trackProperties.maxRows());
         List<GeoPoint> simplified = Geo.simplifyTrack(track, trackProperties.simplificationToleranceMeters());
 
         return simplified.stream()

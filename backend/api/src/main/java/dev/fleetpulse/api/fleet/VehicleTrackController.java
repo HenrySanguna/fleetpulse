@@ -21,8 +21,8 @@ import java.util.UUID;
 // default conversion service has no built-in String-to-Instant converter (it
 // only covers LocalDate/LocalDateTime/ZonedDateTime/OffsetDateTime via
 // @DateTimeFormat), so binding Instant directly would be silently
-// unsupported rather than working by convention. Both are optional: omitting
-// them returns the full track (design.md gives no default window).
+// unsupported rather than working by convention. Both are optional: the
+// window defaults and limits are applied by VehicleTrackService.
 @RestController
 @RequestMapping("/api/vehicles/{vehicleId}/track")
 public class VehicleTrackController {

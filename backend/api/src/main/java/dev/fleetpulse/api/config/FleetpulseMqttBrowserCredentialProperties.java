@@ -1,6 +1,9 @@
 package dev.fleetpulse.api.config;
 
+import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
 
@@ -10,5 +13,9 @@ import java.time.Duration;
 // design.md: a short TTL is the deliberate mitigation for dispatcher-session
 // revocation not being instantaneous on the MQTT channel.
 @ConfigurationProperties(prefix = "fleetpulse.mqtt.browser")
-public record FleetpulseMqttBrowserCredentialProperties(String wsUrl, Duration credentialTtl) {
+@Validated
+public record FleetpulseMqttBrowserCredentialProperties(
+        String wsUrl,
+        Duration credentialTtl,
+        @Positive @DefaultValue("50") int maxActivePerUser) {
 }

@@ -39,6 +39,10 @@ import java.util.UUID;
 @RequestMapping("/api/alerts")
 public class AlertsController {
 
+    private static final int DEFAULT_LIMIT = 200;
+    private static final int MAX_LIMIT = 500;
+    private static final int MAX_TYPE_FILTERS = 10;
+
     private final CurrentDispatcher currentDispatcher;
     private final AlertsService alertsService;
 
@@ -53,10 +57,22 @@ public class AlertsController {
             @RequestParam(required = false) UUID vehicleId,
             @RequestParam(required = false) Boolean acknowledged,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Integer limit) {
         AuthenticatedDispatcher dispatcher = currentDispatcher.require();
-        AlertFilter filter = new AlertFilter(parseTypes(type), vehicleId, acknowledged, parseInstant(from), parseInstant(to));
+        AlertFilter filter = new AlertFilter(
+            parseTypes(type), vehicleId, acknowledged, parseInstant(from), parseInstant(to), resolveLimit(limit));
         return alertsService.list(dispatcher.organizationId(), filter);
+    }
+
+    private static int resolveLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_LIMIT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and " + MAX_LIMIT);
+        }
+        return limit;
     }
 
     @PatchMapping("/{id}/acknowledge")
@@ -68,6 +84,9 @@ public class AlertsController {
     private static List<AlertType> parseTypes(List<String> values) {
         if (values == null || values.isEmpty()) {
             return null;
+        }
+        if (values.size() > MAX_TYPE_FILTERS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At most " + MAX_TYPE_FILTERS + " type filters are allowed");
         }
         return values.stream().map(AlertType::fromQueryValue).toList();
     }

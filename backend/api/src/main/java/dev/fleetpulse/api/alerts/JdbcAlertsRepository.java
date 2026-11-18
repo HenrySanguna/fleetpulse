@@ -88,7 +88,8 @@ class JdbcAlertsRepository {
             sql.append(" AND a.occurred_at <= ?");
             params.add(Timestamp.from(filter.to()));
         }
-        sql.append(" ORDER BY a.occurred_at DESC");
+        sql.append(" ORDER BY a.occurred_at DESC LIMIT ?");
+        params.add(filter.limit());
 
         return jdbcTemplate.getObject().query(sql.toString(), (rs, rowNum) -> toResponse(rs), params.toArray());
     }
