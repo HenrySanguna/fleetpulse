@@ -7,7 +7,7 @@ context: |
   Data: Neon Postgres + PostGIS + pg_partman, native declarative partitioning + BRIN indexes on positions. Mosquitto MQTT (QoS 0 telemetry / 1 commands / 2 alerts). Flyway migrations.
   Testing: JUnit 5 + Testcontainers + AssertJ (backend), Vitest + Playwright (frontend). geo-core requires 100% branch coverage. Every MQTT consumer needs idempotency + out-of-order tests. Spatial/history queries need an execution-plan test (no seq scan).
   Constraints: zero cost, OSI-licensed dependencies only. No TimescaleDB, Redis, Mapbox GL JS, Spring Boot 3.x, or managed services beyond Neon/Oracle Cloud/Cloudflare/GitHub.
-  Status: greenfield -- only .gitignore and openspec/ committed so far. Change 00-bootstrap-monorepo scaffolds the code; changes 01-06 are already fully specified.
+  Status: frozen MVP baseline. Changes 00-06 are implemented and archived; no new OpenSpec changes are created. Post-MVP features are specified in odd/tasks/<feature>.md (Organic Driven Development).
 
 rules:
   proposal:
