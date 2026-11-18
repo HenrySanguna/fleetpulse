@@ -128,7 +128,7 @@ The two never depend on each other. They share only `domain` (JPA entities and F
 | Layer | Technology |
 |---|---|
 | Language and build | Java 21, Gradle 9 (Kotlin DSL), TypeScript 5.9, Nx 22 |
-| Backend | Spring Boot 4.1, Spring Security, Spring Session JDBC, Spring Integration MQTT (Eclipse Paho), springdoc-openapi, Flyway |
+| Backend | Spring Boot 4.1, Spring Security, Spring Session JDBC, Spring Integration MQTT (Eclipse Paho), springdoc-openapi, Flyway, Bucket4j + Caffeine (rate limiting) |
 | Database | PostgreSQL 18 with PostGIS and pg_partman (Neon in production) |
 | Broker | Eclipse Mosquitto 2 with the dynamic-security plugin |
 | Frontend | Angular 21 (zoneless, standalone, signals), NgRx SignalStore, PrimeNG 21 (Aura), Tailwind CSS 4, MapLibre GL, MQTT.js |
@@ -157,7 +157,8 @@ The two never depend on each other. They share only `domain` (JPA entities and F
 │   └── api-client/   TypeScript client generated from the OpenAPI document.
 ├── docker/           Mosquitto, Caddy, PostGIS image, demo seed and entrypoints.
 ├── scripts/          API client generation and drift check.
-├── openspec/         Spec-driven development artifacts (proposals, specs, archive).
+├── openspec/         Project constitution and frozen MVP specs (proposals, specs, archive).
+├── odd/tasks/        Post-MVP feature specs and progress logs.
 └── .github/workflows CI/CD pipeline.
 ```
 
@@ -212,7 +213,7 @@ Straight-line distance multiplied by a sinuosity factor, divided by the recent a
   - Per-IP rate limiting in the API (Bucket4j): login, `/api/**` and MQTT credential issuance each have their own limit; exceeding it returns `429` with `Retry-After`. Actuator endpoints are exempt. Buckets are in memory, so they are not shared across instances.
   - Per-user caps: concurrent sessions (the oldest is evicted, sessions expire after 20 minutes of inactivity) and active browser MQTT credentials.
   - Bounded queries: the track endpoint has a default and a maximum time window plus a row cap, the activity report has a maximum date range, and the alerts endpoint has a limit.
-  - Proxy, broker and server limits: Caddy header/body size and connection timeouts, a connection cap, packet size and queue limits on the broker's WebSocket listener, and Tomcat and connection-pool timeouts.
+  - Proxy, broker and server limits: Caddy header/body size and connection timeouts, a connection cap, packet size and queue limits on the broker's WebSocket listener, Tomcat and connection-pool timeouts, and a 15-second statement timeout on the database role.
 
 ---
 
@@ -246,10 +247,10 @@ Interactive documentation is available through springdoc (`/v3/api-docs`, Swagge
 | `POST /login`, `POST /logout`, `GET /api/csrf` | public / session |
 | `GET /api/dispatchers/me` | authenticated |
 | `GET /api/fleet/state` | authenticated |
-| `GET /api/vehicles/{id}/track` | authenticated |
+| `GET /api/vehicles/{id}/track?from&to` | authenticated |
 | `GET /api/vehicles/{id}/activity-report?from&to` | authenticated |
 | `PUT`, `DELETE /api/vehicles/{id}/destination` | authenticated |
-| `GET /api/alerts`, `PATCH /api/alerts/{id}/acknowledge` | authenticated |
+| `GET /api/alerts?limit`, `PATCH /api/alerts/{id}/acknowledge` | authenticated |
 | `GET /api/geofences`, `GET /api/geofences/{id}` | authenticated |
 | `POST`, `PUT`, `DELETE /api/geofences` | `FLEET_ADMIN` |
 | `GET /api/mqtt/credentials` | authenticated (browser MQTT credentials) |
@@ -382,7 +383,7 @@ npm run generate:api-client:check      # fail if the client drifted
 
 ## How it was built
 
-The project followed **spec-driven development** with OpenSpec: seven changes (bootstrap, geo-core, fleet auth, telemetry ingest, live map, geofencing, trips/ETA/alerts), each with a proposal, specs, design and task breakdown, archived under `openspec/changes/archive/`. Work was shipped as small, reviewable work units, with tests alongside behavior.
+The project followed **spec-driven development** with OpenSpec: seven changes (bootstrap, geo-core, fleet auth, telemetry ingest, live map, geofencing, trips/ETA/alerts), each with a proposal, specs, design and task breakdown, archived under `openspec/changes/archive/`. Those specs are now a frozen MVP baseline: later features (QA follow-ups, user management, demo hardening and others) are specified and tracked one document per feature in `odd/tasks/`. Work was shipped as small, reviewable work units, with tests alongside behavior.
 
 After the first production deploy, several rounds of QA against the live system (browser-driven, with both roles) drove fixes such as cross-site cookies and CSRF, the in-progress trip, the alert silence window, an offline-detection gap and a daily-rollup bug found by reconciling the report against the raw data.
 

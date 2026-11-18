@@ -2,6 +2,8 @@
 
 Real-time fleet tracking. Nx monorepo: Java Spring Boot 4.1 backend (Gradle, Kotlin DSL) + Angular 21 console. The binding constraints, stack, and prohibitions live in `openspec/project.md`; read it before proposing or implementing anything non-trivial.
 
+`openspec/specs/` and `openspec/changes/` are a frozen MVP baseline: never create OpenSpec changes or edit those specs. New features are specified and tracked with ODD in `odd/tasks/<feature>.md`.
+
 ## Stack overrides
 
 The global NestJS and Ionic/Capacitor conventions do not apply here. The backend is Spring Boot, not NestJS; there is no mobile app. The global Angular conventions (standalone, OnPush, signals, `@if`/`@for`, typed forms) do apply to `apps/console`.

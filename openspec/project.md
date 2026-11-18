@@ -20,7 +20,7 @@ Plataforma de seguimiento logístico en tiempo real. Los dispositivos a bordo de
 | Persistencia | **Spring Data JPA / Hibernate** | Consultas nativas donde haga falta SQL espacial |
 | Migraciones | **Flyway** | SQL versionado y revisado a mano |
 | MQTT | **Spring Integration MQTT** (Eclipse Paho) | Incluido en el BOM de Spring Boot 4.1 |
-| Seguridad | **Spring Security** | Sesiones de servidor para despachadores |
+| Seguridad | **Spring Security** | Sesiones de servidor para despachadores; rate limiting por IP con **Bucket4j + Caffeine** (Apache-2.0) |
 | Tareas programadas | **`@Scheduled`** de Spring | Sin planificador externo |
 | Tests | **JUnit 5 + Testcontainers + AssertJ** | Testcontainers es nativo del ecosistema Java |
 
@@ -45,7 +45,7 @@ Plataforma de seguimiento logístico en tiempo real. Los dispositivos a bordo de
 | Series temporales | **Particionado declarativo nativo + `pg_partman` + índices BRIN** | Es lo que la propia documentación de Neon recomienda |
 | Broker MQTT | **Mosquitto** (EPL/EDL), autoalojado en contenedor | |
 | CI/CD | **GitHub Actions** con `nx affected` | |
-| Hosting | **Oracle Cloud "Always Free"** (Ampere A1, una sola VM, `api`+`processor`+Mosquitto vía Docker Compose) + **Cloudflare Pages** (consola) | Fly.io eliminó su tier gratuito permanente en 2024 (ahora requiere tarjeta y factura por uso); Oracle Always Free Ampere A1 (2 OCPU / 12GB RAM en los términos vigentes) es una VM real, gratuita mientras no se exceda la cuota, y no es serverless/scale-to-zero, requisito para `processor` (consumidor MQTT de larga duración + tareas `@Scheduled`) |
+| Hosting | **Oracle Cloud "Always Free"** (Ampere A1, una sola VM, `api`+`processor`+Mosquitto+Caddy vía Docker Compose) + **Cloudflare Pages** (consola) | Fly.io eliminó su tier gratuito permanente en 2024 (ahora requiere tarjeta y factura por uso); Oracle Always Free Ampere A1 (2 OCPU / 12GB RAM en los términos vigentes) es una VM real, gratuita mientras no se exceda la cuota, y no es serverless/scale-to-zero, requisito para `processor` (consumidor MQTT de larga duración + tareas `@Scheduled`) |
 
 **Restricción transversal: coste cero y solo open source.** Toda dependencia debe tener licencia OSI. Toda infraestructura debe usar tiers gratuitos permanentes. Si una propuesta requiere gasto o una licencia no libre, debe decirlo explícitamente y justificarlo.
 
@@ -117,4 +117,8 @@ libs/
 
 ## Fuente de la verdad
 
-Estos artefactos OpenSpec son la especificación completa del proyecto. Si algo no está especificado en un `spec.md`, es una decisión pendiente, no una omisión a rellenar por inferencia: pregunta antes de implementar.
+Este archivo sigue siendo la constitución vigente del proyecto.
+
+`openspec/specs/` y `openspec/changes/archive/` están **congelados**: son la línea base del MVP y no se actualizan más. Toda feature posterior se especifica y se sigue con Organic Driven Development en `odd/tasks/<feature>.md`, cuya sección `Specs` (o sus tareas, en los documentos más antiguos) es la especificación de esa feature. El comportamiento actual del sistema es la línea base de OpenSpec más los documentos de `odd/tasks/`.
+
+Si algo no está especificado ni en la línea base ni en un documento de `odd/tasks/`, es una decisión pendiente, no una omisión a rellenar por inferencia: pregunta antes de implementar.

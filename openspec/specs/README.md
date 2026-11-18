@@ -1,7 +1,5 @@
-# specs/ — vacío a propósito
+# specs/ — línea base congelada del MVP
 
-Este directorio es la **verdad actual** en OpenSpec: lo que ya está construido y verificado. FleetPulse es un proyecto greenfield, así que aquí no hay nada todavía — y eso es correcto, no un error.
+Este directorio contiene los specs de los siete cambios del MVP (bootstrap, geo-core, fleet auth, telemetry ingest, live map, geofencing, trips/ETA/alerts), fusionados al archivarse en `changes/archive/`.
 
-Los siete `changes/NN-*` son la especificación completa del MVP. A medida que cada uno se implemente y se archive, su spec delta se fusiona aquí, construyendo cambio a cambio la documentación viva del sistema real.
-
-No adelantes contenido aquí a mano.
+Está **congelado**: no se añaden ni se modifican specs aquí. Las features posteriores se especifican en `odd/tasks/<feature>.md` (Organic Driven Development). Ver "Fuente de la verdad" en `openspec/project.md`.
